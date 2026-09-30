@@ -1,0 +1,58 @@
+{
+  "name": "msstc4symfony/tracing-bundle",
+  "version": "1.0.0",
+  "license": "proprietary",
+  "authors": [
+    {
+      "name": "Maxim Shamaev",
+      "email": "maxim.shamaev@gmail.com"
+    }
+  ],
+  "type": "symfony-bundle",
+  "description": "Tracking bundle",
+  "minimum-stability": "stable",
+  "keywords": [
+    "php",
+    "symfony",
+    "tracing"
+  ],
+  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Hot\\TracingBundle\\": "src/"
+    }
+  },
+  "autoload-dev": {
+  },
+  "require": {
+    "php": ">=8.1",
+    "composer-runtime-api": ">=2.2",
+    "monolog/monolog": "^3.0",
+    "symfony/uid": "^7.2",
+    "symfony/console": "^7.2",
+    "symfony/event-dispatcher": "^7.2",
+    "symfony/framework-bundle": "^7.2"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.55",
+    "phpstan/extension-installer": "^1.4",
+    "phpstan/phpstan": "^2.1",
+    "phpstan/phpstan-beberlei-assert": "^2.0",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "phpstan/phpstan-symfony": "^2.0",
+    "phpunit/phpunit": ">=11.0",
+    "roave/security-advisories": "dev-latest",
+    "spaze/phpstan-disallowed-calls": "^v4.0",
+    "vimeo/psalm": ">=5.20"
+  },
+  "suggest": {
+    "symfony/monolog-bundle": "To upload the verification results to the logs"
+  },
+  "config": {
+    "allow-plugins": {
+      "composer/package-versions-deprecated": true,
+      "phpstan/extension-installer": true
+    },
+    "sort-packages": true
+  }
+}

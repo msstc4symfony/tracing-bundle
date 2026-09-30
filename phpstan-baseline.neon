@@ -1,0 +1,79 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Class GuzzleHttp\\ClientInterface not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/DependencyInjection/Compiler/GuzzlePass.php
+
+		-
+			message: '#^Class Symfony\\Contracts\\HttpClient\\HttpClientInterface not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/DependencyInjection/Compiler/HttpClientPass.php
+
+		-
+			message: '#^Method Hot\\TracingBundle\\GuzzleHttp\\RequestIdGuzzleFactory\:\:create\(\) has invalid return type GuzzleHttp\\ClientInterface\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleFactory.php
+
+		-
+			message: '#^Only booleans are allowed in &&, mixed given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleFactory.php
+
+		-
+			message: '#^PHPDoc tag @var for variable \$client contains unknown class GuzzleHttp\\ClientInterface\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleFactory.php
+
+		-
+			message: '#^Call to method getConfig\(\) on an unknown class GuzzleHttp\\ClientInterface\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleHandler.php
+
+		-
+			message: '#^Call to method push\(\) on an unknown class GuzzleHttp\\HandlerStack\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleHandler.php
+
+		-
+			message: '#^PHPDoc tag @var for variable \$stack contains unknown class GuzzleHttp\\HandlerStack\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleHandler.php
+
+		-
+			message: '#^Parameter \$client of method Hot\\TracingBundle\\GuzzleHttp\\RequestIdGuzzleHandler\:\:addHandler\(\) has invalid type GuzzleHttp\\ClientInterface\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/GuzzleHttp/RequestIdGuzzleHandler.php
+
+		-
+			message: '#^Trait Hot\\TracingBundle\\GuzzleHttp\\RequestIdHTTPHandlerTrait is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/GuzzleHttp/RequestIdHTTPHandlerTrait.php
+
+		-
+			message: '#^Method Hot\\TracingBundle\\Storage\\RequestIdService\:\:getRequestFrom\(\) should return string but returns string\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Storage/RequestIdService.php
+
+		-
+			message: '#^Method Hot\\TracingBundle\\Storage\\RequestIdService\:\:getRequestId\(\) should return string but returns string\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Storage/RequestIdService.php
+
+		-
+			message: '#^Method Hot\\TracingBundle\\TracingBundle\:\:loadExtension\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/TracingBundle.php
