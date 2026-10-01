@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\Sentry;
 use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Sentry\ClientBuilder;
 use Sentry\Event;
@@ -14,6 +15,7 @@ use Sentry\SentrySdk;
 use Sentry\State\Scope;
 
 #[CoversClass(TracingIntegration::class)]
+#[UsesClass(RequestIdService::class)]
 final class TracingIntegrationTest extends TestCase
 {
     public function testAddsTheTraceToSentryEvents(): void

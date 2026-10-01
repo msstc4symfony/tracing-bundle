@@ -8,11 +8,13 @@ use Msstc4Symfony\TracingBundle\HttpClient\HttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
 #[CoversClass(HttpClientDecorator::class)]
+#[UsesClass(RequestIdService::class)]
 final class HttpClientDecoratorTest extends TestCase
 {
     /** @var list<array<string, string>> */

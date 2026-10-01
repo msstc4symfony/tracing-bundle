@@ -10,9 +10,11 @@ use Monolog\LogRecord;
 use Msstc4Symfony\TracingBundle\Monolog\RequestIdProcessor;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(RequestIdProcessor::class)]
+#[UsesClass(RequestIdService::class)]
 final class RequestIdProcessorTest extends TestCase
 {
     public function testAddsTheTraceAndKeepsExistingExtra(): void

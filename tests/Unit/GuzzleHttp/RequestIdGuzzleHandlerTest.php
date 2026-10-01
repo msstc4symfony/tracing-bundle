@@ -11,10 +11,12 @@ use GuzzleHttp\Psr7\Response;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
 
 #[CoversClass(RequestIdGuzzleHandler::class)]
+#[UsesClass(RequestIdService::class)]
 final class RequestIdGuzzleHandlerTest extends TestCase
 {
     private MockHandler $transport;

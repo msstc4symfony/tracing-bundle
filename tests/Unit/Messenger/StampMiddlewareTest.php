@@ -10,6 +10,7 @@ use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
@@ -20,6 +21,8 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 
 #[CoversClass(IncomingStampMiddleware::class)]
 #[CoversClass(OutgoingStampMiddleware::class)]
+#[UsesClass(RequestIdService::class)]
+#[UsesClass(RequestIdStamp::class)]
 final class StampMiddlewareTest extends TestCase
 {
     private RequestIdService $storage;

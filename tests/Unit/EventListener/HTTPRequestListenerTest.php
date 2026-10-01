@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\EventListener;
 use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,6 +16,7 @@ use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 #[CoversClass(HTTPRequestListener::class)]
+#[UsesClass(RequestIdService::class)]
 final class HTTPRequestListenerTest extends TestCase
 {
     private RequestIdService $storage;
