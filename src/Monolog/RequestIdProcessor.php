@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\Monolog;
+namespace Msstc4Symfony\TracingBundle\Monolog;
 
-use Hot\TracingBundle\Storage\RequestIdServiceInterface;
 use Monolog\LogRecord;
 use Monolog\Processor\ProcessorInterface;
+use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
 use Override;
 
 final readonly class RequestIdProcessor implements ProcessorInterface
@@ -19,10 +19,11 @@ final readonly class RequestIdProcessor implements ProcessorInterface
     #[Override]
     public function __invoke(LogRecord $record): LogRecord
     {
-        $record->extra['runtime_id'] = $this->storage->getRuntimeId();
-        $record->extra['request_id'] = $this->storage->getRequestId();
-        $record->extra['request_from'] = $this->storage->getRequestFrom();
-
-        return $record;
+        return $record->with(extra: [
+            ...$record->extra,
+            'runtime_id' => $this->storage->getRuntimeId(),
+            'request_id' => $this->storage->getRequestId(),
+            'request_from' => $this->storage->getRequestFrom(),
+        ]);
     }
 }

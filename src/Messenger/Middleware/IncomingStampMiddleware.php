@@ -2,33 +2,49 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\Messenger\Middleware;
+namespace Msstc4Symfony\TracingBundle\Messenger\Middleware;
 
-use Hot\TracingBundle\Messenger\Stamp\RequestIdStamp;
-use Hot\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
+use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;
-use Symfony\Component\Messenger\Stamp\StampInterface;
+use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 
-class IncomingStampMiddleware implements MiddlewareInterface
+/**
+ * Restores the sender's trace for a message consumed from a transport, and drops it once the
+ * message is handled so the worker's next message does not inherit it.
+ */
+final readonly class IncomingStampMiddleware implements MiddlewareInterface
 {
     public function __construct(
-        private readonly RequestIdServiceInterface $requestIdService,
+        private RequestIdServiceInterface $requestIdService,
     ) {
     }
 
+    #[Override]
     public function handle(Envelope $envelope, StackInterface $stack): Envelope
     {
-        $requestIdStamp = $envelope->last(RequestIdStamp::class);
+        // Synchronous dispatch runs inside the caller's trace; leave it untouched.
+        if (!$envelope->last(ReceivedStamp::class) instanceof ReceivedStamp) {
+            return $stack->next()->handle($envelope, $stack);
+        }
 
-        if ($requestIdStamp instanceof StampInterface) {
+        $this->requestIdService->reset();
+
+        $stamp = $envelope->last(RequestIdStamp::class);
+        if ($stamp instanceof RequestIdStamp) {
             $this->requestIdService
-                ->setRequestId($requestIdStamp->requestId)
-                ->setRequestFrom($requestIdStamp->requestFrom)
+                ->setRequestId($stamp->requestId)
+                ->setRequestFrom($stamp->requestFrom)
             ;
         }
 
-        return $stack->next()->handle($envelope, $stack);
+        try {
+            return $stack->next()->handle($envelope, $stack);
+        } finally {
+            $this->requestIdService->reset();
+        }
     }
 }

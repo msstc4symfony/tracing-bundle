@@ -1,0 +1,54 @@
+deptrac:
+    paths:
+        - ./src
+
+    exclude_files:
+        - '#.*test.*#i'
+
+    layers:
+        - name: Storage
+          collectors:
+              - type: directory
+                value: src/Storage/.*
+
+        - name: EventListener
+          collectors:
+              - type: directory
+                value: src/EventListener/.*
+
+        - name: Integrations
+          collectors:
+              - type: directory
+                value: src/(HttpClient|GuzzleHttp|Messenger|Monolog|Sentry)/.*
+
+        - name: DependencyInjection
+          collectors:
+              - type: directory
+                value: src/DependencyInjection/.*
+
+        - name: BundleRoot
+          collectors:
+              - type: classLike
+                value: Msstc4Symfony\\TracingBundle\\TracingBundle
+
+    # Status quo of phase A (spec 6.2): records the current layering and blocks new directions.
+    ruleset:
+        # The trace context depends on nothing in-bundle.
+        Storage: ~
+
+        # Listeners read and write the context; header names live on HTTPRequestListener.
+        EventListener:
+            - Storage
+
+        # Each integration propagates the context through one library.
+        Integrations:
+            - Storage
+            - EventListener
+
+        # Compiler passes register the integration decorators/configurators.
+        DependencyInjection:
+            - Storage
+            - Integrations
+
+        BundleRoot:
+            - DependencyInjection

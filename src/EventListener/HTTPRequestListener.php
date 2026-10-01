@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\EventListener;
+namespace Msstc4Symfony\TracingBundle\EventListener;
 
-use Hot\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
 use Override;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpKernel\Event\KernelEvent;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
@@ -31,29 +31,35 @@ final readonly class HTTPRequestListener implements EventSubscriberInterface
         ];
     }
 
-    public function onRequest(KernelEvent $event): void
+    public function onRequest(RequestEvent $event): void
     {
-        $this->requestIdService
-            ->initRuntimeId()
-            ->resetRequestData()
-        ;
-
-        $request = $event->getRequest();
-        if (!$request->headers->has(self::REQUEST_ID_HEADER)) {
+        // Sub-requests (fragments, forwards) belong to the main request's trace.
+        if (!$event->isMainRequest()) {
             return;
         }
 
-        $requestId = $request->headers->get(self::REQUEST_ID_HEADER);
-        $this->requestIdService->setRequestId($requestId ?? $this->requestIdService->generateRequestId());
+        $this->requestIdService->reset();
 
-        $requestFrom = $request->headers->get(self::REQUEST_FROM_HEADER, $this->requestIdService::UNKNOWN_APPLICATION);
-        $this->requestIdService->setRequestFrom($requestFrom ?? $this->requestIdService::UNKNOWN_APPLICATION);
+        $headers = $event->getRequest()->headers;
+        $requestId = $headers->get(self::REQUEST_ID_HEADER);
+        if ($requestId === null || $requestId === '') {
+            return;
+        }
+
+        $this->requestIdService
+            ->setRequestId($requestId)
+            ->setRequestFrom($headers->get(self::REQUEST_FROM_HEADER) ?? RequestIdServiceInterface::UNKNOWN_APPLICATION)
+        ;
     }
 
     public function onResponse(ResponseEvent $event): void
     {
-        $response = $event->getResponse();
-        $response->headers->set(self::REQUEST_ID_HEADER, $this->requestIdService->getRequestId());
-        $response->headers->set(self::REQUEST_FROM_HEADER, $this->requestIdService->getCurrentRequestFrom());
+        if (!$event->isMainRequest()) {
+            return;
+        }
+
+        $headers = $event->getResponse()->headers;
+        $headers->set(self::REQUEST_ID_HEADER, $this->requestIdService->getRequestId());
+        $headers->set(self::REQUEST_FROM_HEADER, $this->requestIdService->getCurrentRequestFrom());
     }
 }

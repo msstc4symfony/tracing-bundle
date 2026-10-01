@@ -2,32 +2,38 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\DependencyInjection\Compiler;
+namespace Msstc4Symfony\TracingBundle\DependencyInjection\Compiler;
 
 use GuzzleHttp\ClientInterface;
-use Hot\TracingBundle\GuzzleHttp\RequestIdGuzzleDecorator;
-use Hot\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
+use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
+use Override;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 
-class GuzzlePass implements CompilerPassInterface
+final class GuzzlePass implements CompilerPassInterface
 {
+    #[Override]
     public function process(ContainerBuilder $container): void
     {
-        foreach ($container->getDefinitions() as $id => $definition) {
-            if (!($definition->getClass() instanceof ClientInterface)) {
+        if (!interface_exists(ClientInterface::class) || !$container->hasDefinition(RequestIdGuzzleHandler::class)) {
+            return;
+        }
+
+        foreach ($container->getDefinitions() as $definition) {
+            $class = $definition->getClass();
+
+            if (
+                $class === null
+                || $definition->isAbstract()
+                || !is_a($class, ClientInterface::class, true)
+                // An existing configurator is the application's; do not replace it.
+                || $definition->getConfigurator() !== null
+            ) {
                 continue;
             }
 
-            $decoratorId = 'zumlin.tracing.guzzle.decorator.' . $id;
-            $definition = new Definition(RequestIdGuzzleDecorator::class)
-                ->setArgument('$client', new Reference($id))
-                ->setArgument('$handler', new Reference(RequestIdGuzzleHandler::class))
-                ->setDecoratedService($id)
-            ;
-            $container->setDefinition($decoratorId, $definition);
+            $definition->setConfigurator([new Reference(RequestIdGuzzleHandler::class), 'addHandler']);
         }
     }
 }

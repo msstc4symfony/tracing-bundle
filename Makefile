@@ -1,29 +1,29 @@
+PHPSTAN_CONFIG ?= phpstan.dist.neon
+
 check: ## Check code
-	@echo "PHP lint"
-	@find ./ -name '*.php' -not -path './vendor/*' | xargs -r php -l
-	@echo "PHPStan"
-	@vendor/bin/phpstan --memory-limit=512M
-	@echo "Psalm"
-	@vendor/bin/psalm
-	@echo "PHP CS Fixer"
-	@vendor/bin/php-cs-fixer check
+	find ./ -name '*.php' -not -path './vendor/*' | xargs -r php -l
+	vendor/bin/phpstan analyse --memory-limit=512M -c $(PHPSTAN_CONFIG)
+	vendor/bin/php-cs-fixer check
+	composer validate --strict --no-check-publish
+	composer audit
+	vendor/bin/rector process -n
+	vendor/bin/deptrac analyse --config-file=deptrac.yaml --no-progress
 
 test: ## Test code
-	@echo "PHPUnit"
-	@vendor/bin/phpunit
+	vendor/bin/phpunit
+
+test-with-coverage: ## Test code with coverage
+	vendor/bin/phpunit --coverage-html coverage
+
+infection: ## Run mutation testing
+	XDEBUG_MODE=coverage vendor/bin/infection --threads=$(shell nproc) --no-interaction
 
 regenerate-baseline: ## Regenerate baseline
-	@echo "PHPStan"
-	@vendor/bin/phpstan analyse --memory-limit=512M -b phpstan-baseline.neon -vv
-	@echo "Psalm"
-	@vendor/bin/psalm --set-baseline
+	vendor/bin/phpstan analyse --memory-limit=512M -b phpstan-baseline.neon
 
 fix: ## Fix code
-	@echo "PHP CS Fixer"
-	@vendor/bin/php-cs-fixer fix
-
-enable-git-hooks: ## Enable git hooks
-	@git config core.hooksPath .githooks
+	vendor/bin/php-cs-fixer fix
+	vendor/bin/rector process
 
 ## Help
 help: ## List of all commands

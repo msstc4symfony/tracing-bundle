@@ -2,39 +2,64 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\HttpClient;
+namespace Msstc4Symfony\TracingBundle\HttpClient;
 
-use Hot\TracingBundle\EventListener\HTTPRequestListener;
-use Hot\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
+use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
+use Symfony\Component\HttpClient\DecoratorTrait;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
-use Symfony\Contracts\HttpClient\ResponseStreamInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
+/**
+ * Adds the trace headers to every outgoing request unless the caller set them.
+ */
 #[Exclude]
-final readonly class HttpClientDecorator implements HttpClientInterface
+final class HttpClientDecorator implements HttpClientInterface, ResetInterface
 {
+    use DecoratorTrait;
+
     public function __construct(
-        private HttpClientInterface $inner,
-        private RequestIdServiceInterface $requestIdService,
+        HttpClientInterface $inner,
+        private readonly RequestIdServiceInterface $requestIdService,
     ) {
+        $this->client = $inner;
     }
 
+    /**
+     * @param array<mixed> $options
+     */
+    #[Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
-        $options['headers'][HTTPRequestListener::REQUEST_ID_HEADER] = $this->requestIdService->getRequestId();
-        $options['headers'][HTTPRequestListener::REQUEST_FROM_HEADER] = $this->requestIdService->getCurrentRequestFrom();
+        $headers = isset($options['headers']) && is_array($options['headers']) ? $options['headers'] : [];
 
-        return $this->inner->request($method, $url, $options);
+        if (!$this->hasHeader($headers, HTTPRequestListener::REQUEST_ID_HEADER)) {
+            $headers[HTTPRequestListener::REQUEST_ID_HEADER] = $this->requestIdService->getRequestId();
+            $headers[HTTPRequestListener::REQUEST_FROM_HEADER] = $this->requestIdService->getCurrentRequestFrom();
+        }
+
+        $options['headers'] = $headers;
+
+        return $this->client->request($method, $url, $options);
     }
 
-    public function stream(ResponseInterface|iterable $responses, ?float $timeout = null): ResponseStreamInterface
+    /**
+     * Headers come either as name => value or as a list of "Name: value" lines.
+     *
+     * @param array<mixed> $headers
+     */
+    private function hasHeader(array $headers, string $name): bool
     {
-        return $this->inner->stream($responses, $timeout);
-    }
+        foreach ($headers as $key => $value) {
+            $header = is_string($key) ? $key : (is_string($value) ? strstr($value, ':', true) : false);
+            if (is_string($header) && strcasecmp(trim($header), $name) === 0) {
+                return true;
+            }
+        }
 
-    public function withOptions(array $options): static
-    {
-        return $this->inner->withOptions($options);
+        return false;
     }
 }

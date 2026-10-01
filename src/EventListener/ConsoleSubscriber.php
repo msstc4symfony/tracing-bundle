@@ -2,13 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\EventListener;
+namespace Msstc4Symfony\TracingBundle\EventListener;
 
-use Hot\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
 use Override;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
+/**
+ * Every console command starts its own trace.
+ */
 final readonly class ConsoleSubscriber implements EventSubscriberInterface
 {
     public function __construct(
@@ -26,9 +29,7 @@ final readonly class ConsoleSubscriber implements EventSubscriberInterface
 
     public function onCommand(): void
     {
-        $this->requestIdService
-            ->initRuntimeId()
-            ->generate()
-        ;
+        $this->requestIdService->reset();
+        $this->requestIdService->generate();
     }
 }

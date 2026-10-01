@@ -8,7 +8,7 @@
     }
   ],
   "type": "symfony-bundle",
-  "description": "Request tracing for Symfony: propagates request id and caller across HTTP, Messenger and logs",
+  "description": "Request tracing for Symfony (CI profile — installs optional libraries and CI-only tools)",
   "minimum-stability": "stable",
   "keywords": ["php", "symfony", "tracing"],
   "prefer-stable": true,
@@ -32,14 +32,22 @@
     "symfony/uid": "^6.4|^7.0|^8.0"
   },
   "require-dev": {
+    "deptrac/deptrac": "^4.6",
     "friendsofphp/php-cs-fixer": "^3.55",
+    "guzzlehttp/guzzle": "^7.8",
+    "infection/infection": "^0.32",
     "phpstan/extension-installer": "^1.4",
     "phpstan/phpstan": "^2.1",
     "phpstan/phpstan-strict-rules": "^2.0",
     "phpstan/phpstan-symfony": "^2.0",
     "phpunit/phpunit": ">=11.0",
     "rector/rector": "^2.1",
-    "roave/security-advisories": "dev-latest"
+    "roave/backward-compatibility-check": "^8.20",
+    "roave/security-advisories": "dev-latest",
+    "sentry/sentry": "^4.10",
+    "symfony/http-client": "^6.4|^7.0|^8.0",
+    "symfony/messenger": "^6.4|^7.0|^8.0",
+    "symfony/monolog-bundle": "^3.11|^4.0"
   },
   "suggest": {
     "guzzlehttp/guzzle": "To propagate the trace through Guzzle clients",
@@ -50,6 +58,8 @@
   },
   "config": {
     "allow-plugins": {
+      "infection/extension-installer": true,
+      "php-http/discovery": false,
       "phpstan/extension-installer": true
     },
     "sort-packages": true

@@ -2,12 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\Messenger\Stamp;
+namespace Msstc4Symfony\TracingBundle\Messenger\Stamp;
 
-use Symfony\Component\DependencyInjection\Attribute\Exclude;
 use Symfony\Component\Messenger\Stamp\StampInterface;
 
-#[Exclude]
 final readonly class RequestIdStamp implements StampInterface
 {
     public function __construct(

@@ -1,0 +1,26 @@
+name: Code Quality Checks
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  standard:
+    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v1.6.0
+    with:
+      slug: msstc4symfony/tracing-bundle
+      extensions: 'mbstring, xml, ctype, iconv, intl, json'
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

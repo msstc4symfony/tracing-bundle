@@ -2,11 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\Storage;
+namespace Msstc4Symfony\TracingBundle\Storage;
 
-interface RequestIdServiceInterface
+use Symfony\Contracts\Service\ResetInterface;
+
+/**
+ * Trace context of the current unit of work: an HTTP request, a console command or a
+ * consumed message. Reset between units so long-running workers never leak ids.
+ */
+interface RequestIdServiceInterface extends ResetInterface
 {
-    public const UNKNOWN_APPLICATION = 'unknown';
+    public const string UNKNOWN_APPLICATION = 'unknown';
 
     public function initRuntimeId(): static;
 
@@ -16,15 +22,19 @@ interface RequestIdServiceInterface
 
     public function setRequestId(string $requestId): static;
 
+    /**
+     * Generates a fresh id on first access when none was received.
+     */
     public function getRequestId(): string;
 
     public function setRequestFrom(string $requestFrom): static;
 
     public function getRequestFrom(): string;
 
+    /**
+     * "application:component" of this service, sent as request-from downstream.
+     */
     public function getCurrentRequestFrom(): string;
-
-    public function flush(): static;
 
     public function generateRequestId(): string;
 

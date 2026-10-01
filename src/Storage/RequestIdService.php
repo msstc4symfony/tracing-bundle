@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Hot\TracingBundle\Storage;
+namespace Msstc4Symfony\TracingBundle\Storage;
 
+use Override;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Uid\Uuid;
 
 final class RequestIdService implements RequestIdServiceInterface
@@ -15,12 +17,15 @@ final class RequestIdService implements RequestIdServiceInterface
     private ?string $requestFrom = null;
 
     public function __construct(
+        #[Autowire(param: 'msstc4symfony_tracing.application_name')]
         private readonly string $applicationName,
+        #[Autowire(param: 'msstc4symfony_tracing.component_name')]
         private readonly string $componentName,
     ) {
         $this->initRuntimeId();
     }
 
+    #[Override]
     public function initRuntimeId(): static
     {
         $this->runtimeId = Uuid::v4()->toRfc4122();
@@ -28,17 +33,20 @@ final class RequestIdService implements RequestIdServiceInterface
         return $this;
     }
 
+    #[Override]
     public function getRuntimeId(): string
     {
         return $this->runtimeId;
     }
 
+    #[Override]
     public function resetRequestData(): void
     {
         $this->requestId = null;
         $this->requestFrom = null;
     }
 
+    #[Override]
     public function setRequestId(string $requestId): static
     {
         $this->requestId = $requestId;
@@ -46,11 +54,13 @@ final class RequestIdService implements RequestIdServiceInterface
         return $this;
     }
 
+    #[Override]
     public function getRequestId(): string
     {
-        return $this->requestId ?? $this->generate()->requestId;
+        return $this->ensureContext()[0];
     }
 
+    #[Override]
     public function setRequestFrom(string $requestFrom): static
     {
         $this->requestFrom = $requestFrom;
@@ -58,34 +68,48 @@ final class RequestIdService implements RequestIdServiceInterface
         return $this;
     }
 
+    #[Override]
     public function getRequestFrom(): string
     {
-        return $this->requestFrom ?? $this->generate()->requestFrom;
+        return $this->ensureContext()[1];
     }
 
+    #[Override]
     public function getCurrentRequestFrom(): string
     {
         return $this->applicationName . ':' . $this->componentName;
     }
 
-    public function flush(): static
-    {
-        $this->requestId = null;
-        $this->requestFrom = null;
-
-        return $this;
-    }
-
+    #[Override]
     public function generateRequestId(): string
     {
         return Uuid::v4()->toRfc4122();
     }
 
+    #[Override]
     public function generate(): static
     {
         $this->requestId = $this->generateRequestId();
         $this->requestFrom = $this->getCurrentRequestFrom();
 
         return $this;
+    }
+
+    /**
+     * @return array{string, string} request id and request-from, generated when missing
+     */
+    private function ensureContext(): array
+    {
+        $this->requestId ??= $this->generateRequestId();
+        $this->requestFrom ??= $this->getCurrentRequestFrom();
+
+        return [$this->requestId, $this->requestFrom];
+    }
+
+    #[Override]
+    public function reset(): void
+    {
+        $this->initRuntimeId();
+        $this->resetRequestData();
     }
 }
