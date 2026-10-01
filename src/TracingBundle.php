@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle;
 use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\GuzzlePass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\HttpClientPass;
 use Override;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
@@ -19,7 +20,8 @@ final class TracingBundle extends AbstractBundle
         parent::build($container);
 
         $container->addCompilerPass(new HttpClientPass());
-        $container->addCompilerPass(new GuzzlePass());
+        // Child definitions (parent: ...) have their class resolved only by optimization passes.
+        $container->addCompilerPass(new GuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
     }
 
     /**

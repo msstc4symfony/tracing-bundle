@@ -47,10 +47,11 @@ final readonly class RequestIdGuzzleHandler
 
         return static fn (callable $handler): Closure => static function (RequestInterface $request, array $options) use ($handler, $requestIdService): PromiseInterface {
             if (!$request->hasHeader(HTTPRequestListener::REQUEST_ID_HEADER)) {
-                $request = $request
-                    ->withHeader(HTTPRequestListener::REQUEST_ID_HEADER, $requestIdService->getRequestId())
-                    ->withHeader(HTTPRequestListener::REQUEST_FROM_HEADER, $requestIdService->getCurrentRequestFrom())
-                ;
+                $request = $request->withHeader(HTTPRequestListener::REQUEST_ID_HEADER, $requestIdService->getRequestId());
+            }
+
+            if (!$request->hasHeader(HTTPRequestListener::REQUEST_FROM_HEADER)) {
+                $request = $request->withHeader(HTTPRequestListener::REQUEST_FROM_HEADER, $requestIdService->getCurrentRequestFrom());
             }
 
             return $handler($request, $options);

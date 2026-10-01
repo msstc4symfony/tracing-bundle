@@ -6,6 +6,7 @@ use GuzzleHttp\ClientInterface;
 use Msstc4Symfony\TracingBundle\EventListener\ConsoleSubscriber;
 use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
+use Msstc4Symfony\TracingBundle\Messenger\EventListener\ResetTraceOnWorkerRunning;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Monolog\RequestIdProcessor;
@@ -43,6 +44,7 @@ return static function (ContainerConfigurator $container): void {
     if (interface_exists(MiddlewareInterface::class)) {
         $services->set(IncomingStampMiddleware::class);
         $services->set(OutgoingStampMiddleware::class);
+        $services->set(ResetTraceOnWorkerRunning::class);
     }
 
     if (interface_exists(IntegrationInterface::class)) {

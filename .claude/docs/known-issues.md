@@ -12,6 +12,26 @@
 - Конфиг из YAML без `symfony/yaml` (верификатор стандарта ищет `YamlFileLoader` и такой
   `ContainerConfigurator::import('*.yaml')` не видит) — теперь `services.php`.
 
+## Messenger: пакетные обработчики (BatchHandler) — одна трасса на пачку
+
+`Worker::flush()` и пачка, сработавшая на N-м сообщении, обрабатываются в трассе того
+сообщения, на котором сработал сброс пачки. Разделить трассу по сообщениям пачки нельзя:
+обработчик видит их одним вызовом.
+
+## Ревью 2026-10-01: первый вариант Incoming-middleware ломал трассы
+
+Сброс в `finally` после каждого полученного сообщения: при `sync://` из HTTP-запроса
+затирал контекст запроса (ответ уходил с чужим `request-id`), а сообщения из
+`dispatch_after_current_bus` и логи ack воркера оставались без трассы. Сейчас —
+счётчик вложенности, снимок/восстановление и `WorkerRunningEvent`; ловит
+`tests/Unit/Messenger/MessageBusTraceTest` на настоящей шине.
+
+## Guzzle 8: `ClientInterface::getConfig()` удаляется
+
+`RequestIdGuzzleHandler` берёт стек через `getConfig('handler')` — в Guzzle 7 метод
+`@deprecated`. На Guzzle 8 подход через configurator придётся заменить (middleware при
+создании клиента).
+
 ## Guzzle-клиент с уже заданным configurator не трассируется
 
 `GuzzlePass` не заменяет чужой configurator. Такому клиенту middleware надо добавить

@@ -39,4 +39,8 @@ interface RequestIdServiceInterface extends ResetInterface
     public function generateRequestId(): string;
 
     public function generate(): static;
+
+    public function snapshot(): TraceContext;
+
+    public function restore(TraceContext $context): void;
 }

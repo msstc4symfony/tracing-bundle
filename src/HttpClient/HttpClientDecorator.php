@@ -12,6 +12,7 @@ use Symfony\Component\HttpClient\DecoratorTrait;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 use Symfony\Contracts\Service\ResetInterface;
+use Traversable;
 
 /**
  * Adds the trace headers to every outgoing request unless the caller set them.
@@ -34,10 +35,21 @@ final class HttpClientDecorator implements HttpClientInterface, ResetInterface
     #[Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
-        $headers = isset($options['headers']) && is_array($options['headers']) ? $options['headers'] : [];
+        $headers = $options['headers'] ?? [];
+        if ($headers instanceof Traversable) {
+            $headers = iterator_to_array($headers);
+        }
+
+        // Anything else is invalid input for the inner client; let it report it.
+        if (!is_array($headers)) {
+            return $this->client->request($method, $url, $options);
+        }
 
         if (!$this->hasHeader($headers, HTTPRequestListener::REQUEST_ID_HEADER)) {
             $headers[HTTPRequestListener::REQUEST_ID_HEADER] = $this->requestIdService->getRequestId();
+        }
+
+        if (!$this->hasHeader($headers, HTTPRequestListener::REQUEST_FROM_HEADER)) {
             $headers[HTTPRequestListener::REQUEST_FROM_HEADER] = $this->requestIdService->getCurrentRequestFrom();
         }
 

@@ -95,6 +95,20 @@ final class RequestIdService implements RequestIdServiceInterface
         return $this;
     }
 
+    #[Override]
+    public function snapshot(): TraceContext
+    {
+        return new TraceContext($this->runtimeId, $this->requestId, $this->requestFrom);
+    }
+
+    #[Override]
+    public function restore(TraceContext $context): void
+    {
+        $this->runtimeId = $context->runtimeId;
+        $this->requestId = $context->requestId;
+        $this->requestFrom = $context->requestFrom;
+    }
+
     /**
      * @return array{string, string} request id and request-from, generated when missing
      */

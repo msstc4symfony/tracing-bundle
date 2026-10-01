@@ -66,11 +66,15 @@ COMPONENT_NAME=api
 * The context is reset on `kernel.reset`, so long-running workers (RoadRunner, FrankenPHP,
   Messenger) never carry an id into the next unit of work.
 
-Headers already set by the caller are never overwritten.
+Headers already set by the caller are never overwritten (`request-id` and `request-from` independently).
 
 ## Opt-in integrations
 
 **Messenger** — middleware must be listed on the buses ([doc/messenger.yaml](doc/messenger.yaml)).
+A message consumed by a worker runs in its sender's trace, which stays active for the
+worker's own logs and for messages released by `dispatch_after_current_bus`, and is cleared
+before the next message. A message handled synchronously (`sync://`) returns to the caller's
+trace afterwards. A batch handler processes the whole batch in one message's trace.
 
 **Sentry** — add the integration ([doc/sentry.yaml](doc/sentry.yaml)).
 

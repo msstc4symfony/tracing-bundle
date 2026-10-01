@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Test\Unit\HttpClient;
 
+use ArrayIterator;
 use Msstc4Symfony\TracingBundle\HttpClient\HttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -61,6 +62,26 @@ final class HttpClientDecoratorTest extends TestCase
     {
         yield 'name => value' => [['Request-Id' => 'mine']];
         yield 'header line' => [['Request-Id: mine']];
+    }
+
+    public function testKeepsARequestFromTheCallerSet(): void
+    {
+        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+
+        $decorator->request('GET', 'https://example.com', ['headers' => ['Request-From: gateway:edge']])->getStatusCode();
+
+        self::assertSame('abc', $this->sentHeaders[0]['request-id'] ?? null);
+        self::assertSame('gateway:edge', $this->sentHeaders[0]['request-from'] ?? null);
+    }
+
+    public function testKeepsCallerHeadersGivenAsTraversable(): void
+    {
+        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+
+        $decorator->request('GET', 'https://example.com', ['headers' => new ArrayIterator(['Authorization' => 'Bearer x'])])->getStatusCode();
+
+        self::assertSame('Bearer x', $this->sentHeaders[0]['authorization'] ?? null);
+        self::assertSame('abc', $this->sentHeaders[0]['request-id'] ?? null);
     }
 
     public function testWithOptionsKeepsTracing(): void

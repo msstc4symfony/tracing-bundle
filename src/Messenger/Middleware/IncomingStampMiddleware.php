@@ -6,6 +6,7 @@ namespace Msstc4Symfony\TracingBundle\Messenger\Middleware;
 
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Storage\TraceContext;
 use Override;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
@@ -13,24 +14,48 @@ use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 
 /**
- * Restores the sender's trace for a message consumed from a transport, and drops it once the
- * message is handled so the worker's next message does not inherit it.
+ * Runs a consumed message in its sender's trace.
+ *
+ * A message consumed at the top of a worker starts a unit of work: the trace is replaced and
+ * deliberately kept after handling, so the worker's ack/failure logs and messages released by
+ * dispatch_after_current_bus stay in it; ResetTraceOnWorkerRunning clears it before the next
+ * message. A message received inside another unit (sync:// transport) restores the outer trace
+ * once handled.
  */
-final readonly class IncomingStampMiddleware implements MiddlewareInterface
+final class IncomingStampMiddleware implements MiddlewareInterface
 {
+    private int $depth = 0;
+
     public function __construct(
-        private RequestIdServiceInterface $requestIdService,
+        private readonly RequestIdServiceInterface $requestIdService,
     ) {
     }
 
     #[Override]
     public function handle(Envelope $envelope, StackInterface $stack): Envelope
     {
-        // Synchronous dispatch runs inside the caller's trace; leave it untouched.
-        if (!$envelope->last(ReceivedStamp::class) instanceof ReceivedStamp) {
-            return $stack->next()->handle($envelope, $stack);
+        $received = $envelope->last(ReceivedStamp::class) instanceof ReceivedStamp;
+        $outer = $received && $this->depth > 0 ? $this->requestIdService->snapshot() : null;
+
+        if ($received) {
+            $this->enter($envelope);
         }
 
+        $this->depth++;
+
+        try {
+            return $stack->next()->handle($envelope, $stack);
+        } finally {
+            $this->depth--;
+
+            if ($outer instanceof TraceContext) {
+                $this->requestIdService->restore($outer);
+            }
+        }
+    }
+
+    private function enter(Envelope $envelope): void
+    {
         $this->requestIdService->reset();
 
         $stamp = $envelope->last(RequestIdStamp::class);
@@ -39,12 +64,6 @@ final readonly class IncomingStampMiddleware implements MiddlewareInterface
                 ->setRequestId($stamp->requestId)
                 ->setRequestFrom($stamp->requestFrom)
             ;
-        }
-
-        try {
-            return $stack->next()->handle($envelope, $stack);
-        } finally {
-            $this->requestIdService->reset();
         }
     }
 }

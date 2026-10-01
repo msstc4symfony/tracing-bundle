@@ -52,6 +52,18 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         self::assertSame(['mine'], $this->transport->getLastRequest()?->getHeader('request-id'));
     }
 
+    public function testKeepsARequestFromTheCallerSet(): void
+    {
+        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com', ['headers' => ['request-from' => 'gateway:edge']]);
+
+        $request = $this->transport->getLastRequest();
+        self::assertInstanceOf(RequestInterface::class, $request);
+        self::assertSame(['abc'], $request->getHeader('request-id'));
+        self::assertSame(['gateway:edge'], $request->getHeader('request-from'));
+    }
+
     public function testIgnoresClientsWithoutAHandlerStack(): void
     {
         $client = new Client(['handler' => new MockHandler([new Response()])]);

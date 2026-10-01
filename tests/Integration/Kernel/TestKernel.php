@@ -21,6 +21,8 @@ final class TestKernel extends Kernel
 
     public const string GUZZLE_CLIENT = 'test.guzzle';
 
+    public const string GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
+
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string
     {
@@ -70,6 +72,9 @@ final class TestKernel extends Kernel
         $services = $container->services();
         $services->set(RecordingResponseFactory::class)->public();
         $services->set(self::GUZZLE_CLIENT, Client::class)->public();
+        // Class known only after child definitions are resolved.
+        $services->set('test.guzzle.parent', Client::class)->abstract();
+        $services->set(self::GUZZLE_CHILD_CLIENT)->parent('test.guzzle.parent')->public();
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.http_client', 'http_client')->public();
         $services->alias('test.logger', 'logger')->public();

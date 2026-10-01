@@ -12,6 +12,7 @@ use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TestKernel;
 use Override;
+use PHPUnit\Framework\Attributes\TestWith;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Filesystem\Filesystem;
@@ -87,11 +88,13 @@ final class ContainerCompileTest extends KernelTestCase
         self::assertNotSame('abc', $storage->getRequestId());
     }
 
-    public function testGuzzleClientsGetTheTracingMiddleware(): void
+    #[TestWith([TestKernel::GUZZLE_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_CHILD_CLIENT])]
+    public function testGuzzleClientsGetTheTracingMiddleware(string $id): void
     {
         self::bootKernel();
 
-        $client = self::getContainer()->get(TestKernel::GUZZLE_CLIENT);
+        $client = self::getContainer()->get($id);
         self::assertInstanceOf(Client::class, $client);
         $stack = $client->getConfig('handler');
         self::assertInstanceOf(HandlerStack::class, $stack);

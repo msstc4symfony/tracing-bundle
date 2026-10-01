@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle\DependencyInjection\Compiler;
 use GuzzleHttp\ClientInterface;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Override;
+use ReflectionClass;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
@@ -21,15 +22,16 @@ final class GuzzlePass implements CompilerPassInterface
         }
 
         foreach ($container->getDefinitions() as $definition) {
-            $class = $definition->getClass();
+            // An existing configurator is the application's; do not replace it.
+            if ($definition->isAbstract() || $definition->getConfigurator() !== null) {
+                continue;
+            }
 
-            if (
-                $class === null
-                || $definition->isAbstract()
-                || !is_a($class, ClientInterface::class, true)
-                // An existing configurator is the application's; do not replace it.
-                || $definition->getConfigurator() !== null
-            ) {
+            $class = $container->getParameterBag()->resolveValue($definition->getClass());
+            // getReflectionClass() survives classes whose parent comes from a missing package;
+            // is_a() would autoload them into a fatal error.
+            $reflection = is_string($class) ? $container->getReflectionClass($class, false) : null;
+            if (!$reflection instanceof ReflectionClass || !$reflection->implementsInterface(ClientInterface::class)) {
                 continue;
             }
 

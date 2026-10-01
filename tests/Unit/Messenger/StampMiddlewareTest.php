@@ -50,7 +50,7 @@ final class StampMiddlewareTest extends TestCase
         self::assertEquals(new RequestIdStamp('origin', 'billing:api'), $envelope->last(RequestIdStamp::class));
     }
 
-    public function testIncomingRunsTheHandlerInTheSendersTraceAndForgetsItAfter(): void
+    public function testIncomingRunsTheHandlerInTheSendersTrace(): void
     {
         $seen = null;
         $stack = $this->stackSeeing(function () use (&$seen): void {
@@ -61,7 +61,8 @@ final class StampMiddlewareTest extends TestCase
         new IncomingStampMiddleware($this->storage)->handle($envelope, $stack);
 
         self::assertSame(['abc', 'billing:api'], $seen);
-        self::assertNotSame('abc', $this->storage->getRequestId());
+        // Kept for the worker's ack logs; ResetTraceOnWorkerRunning clears it.
+        self::assertSame('abc', $this->storage->getRequestId());
     }
 
     public function testIncomingLeavesSynchronousDispatchInTheCallersTrace(): void
