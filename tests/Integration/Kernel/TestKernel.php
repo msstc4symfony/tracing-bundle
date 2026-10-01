@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Integration\Kernel;
 
 use GuzzleHttp\Client;
+use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
+use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
 use Msstc4Symfony\TracingBundle\TracingBundle;
 use Override;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
@@ -67,6 +69,13 @@ final class TestKernel extends Kernel
             // The php_errors logger installs a global handler that outlives the kernel and trips failOnRisky.
             'php_errors' => ['log' => false],
             'http_client' => ['mock_response_factory' => RecordingResponseFactory::class],
+            'messenger' => [
+                'default_bus' => 'bus.commands',
+                'buses' => [
+                    'bus.commands' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
+                    'bus.events' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
+                ],
+            ],
         ]);
         $container->extension('monolog', [
             'handlers' => ['main' => ['type' => 'test']],
@@ -87,6 +96,8 @@ final class TestKernel extends Kernel
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.http_client', 'http_client')->public();
         $services->alias('test.logger', 'logger')->public();
+        $services->alias('test.bus.commands', 'bus.commands')->public();
+        $services->alias('test.bus.events', 'bus.events')->public();
     }
 
     protected function configureRoutes(RoutingConfigurator $routes): void

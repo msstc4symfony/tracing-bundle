@@ -62,13 +62,39 @@ final class WorkerTraceTest extends TestCase
             $clock->sleep(31);
         }]]);
 
-        self::assertSame(['received', 'received', 'flushed batched', 'received', 'stopped'], array_map(
-            static fn (string $entry): string => explode(':', $entry)[0],
-            $this->log,
-        ));
-        foreach ($this->log as $entry) {
-            self::assertStringNotContainsString(':batched', $entry, implode(', ', $this->log));
-        }
+        self::assertContains('flushed batched:', $this->log);
+        $this->assertTraceNeverLeaks('batched');
+    }
+
+    public function testBatchFlushedOnStopIsClosedBeforeTheWorkerStops(): void
+    {
+        $this->consume(new MockClock(), [
+            new Envelope(new BatchedMessage(), [new RequestIdStamp('batched', 'x')]),
+        ], []);
+
+        self::assertContains('flushed batched:', $this->log);
+        $this->assertTraceNeverLeaks('batched');
+    }
+
+    public function testRunningEventAfterAMessageIsOutsideItsTrace(): void
+    {
+        $this->consume(new MockClock(), [
+            new Envelope(new SlowMessage(), [new RequestIdStamp('handled', 'x')]),
+        ], [SlowMessage::class => [static function (): void {}]]);
+
+        self::assertNotSame([], array_filter($this->log, static fn (string $entry): bool => str_starts_with($entry, 'running:')));
+        $this->assertTraceNeverLeaks('handled');
+    }
+
+    public function testIdleTicksAfterAMessageKeepOneTrace(): void
+    {
+        $this->consume(new MockClock(), [
+            new Envelope(new SlowMessage(), [new RequestIdStamp('handled', 'x')]),
+        ], [SlowMessage::class => [static function (): void {}]], idleTicks: 3);
+
+        $idle = array_values(array_filter($this->log, static fn (string $entry): bool => str_starts_with($entry, 'idle:')));
+        self::assertCount(3, $idle);
+        self::assertCount(1, array_unique($idle));
     }
 
     public function testIdleTicksKeepTheCommandTrace(): void
@@ -78,6 +104,13 @@ final class WorkerTraceTest extends TestCase
         $this->consume(new MockClock(), [], [], idleTicks: 3);
 
         self::assertSame('console-run', $this->storage->getRequestId());
+    }
+
+    private function assertTraceNeverLeaks(string $requestId): void
+    {
+        foreach ($this->log as $entry) {
+            self::assertStringNotContainsString(':' . $requestId, $entry, implode(', ', $this->log));
+        }
     }
 
     /**
@@ -100,6 +133,9 @@ final class WorkerTraceTest extends TestCase
         $dispatcher->addListener(WorkerMessageReceivedEvent::class, function (): void {
             $this->log[] = 'received:' . $this->storage->getRequestId();
         });
+        $dispatcher->addListener(WorkerRunningEvent::class, function (WorkerRunningEvent $event): void {
+            $this->log[] = ($event->isWorkerIdle() ? 'idle:' : 'running:') . $this->storage->getRequestId() . '|' . $this->storage->getRuntimeId();
+        }, -5);
         $dispatcher->addListener(WorkerRunningEvent::class, static function (WorkerRunningEvent $event) use (&$idleTicks): void {
             if ($event->isWorkerIdle() && --$idleTicks <= 0) {
                 $event->getWorker()->stop();

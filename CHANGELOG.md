@@ -9,7 +9,9 @@ First release as `msstc4symfony/tracing-bundle` (`Msstc4Symfony\TracingBundle`),
 - Guzzle clients get the tracing middleware through a service configurator and keep their type.
 - Messenger: middleware must be listed on the buses (see `doc/messenger.yaml`); consumed
   messages run in the sender's trace, kept for the worker's logs and deferred dispatches and
-  closed when the worker moves on (next received message, `WorkerRunningEvent`, worker stop; idle ticks keep the command's trace); synchronous (`sync://`) handling restores the caller's trace.
+  closed when the worker moves on (next received message, `WorkerRunningEvent`, worker
+  stop); idle ticks no longer regenerate the trace, so between messages the worker runs in
+  one stable fresh trace; synchronous (`sync://`) handling restores the caller's trace.
 - The context resets on `kernel.reset`, on main HTTP requests and on console commands;
   sub-requests keep the main trace.
 - `request from` comes from `APPLICATION_NAME` / `COMPONENT_NAME` (was

@@ -18,8 +18,9 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
  *
  * A message consumed at the top of a worker starts a unit of work: the trace is replaced and
  * deliberately kept after handling, so the worker's ack/failure logs and messages released by
- * dispatch_after_current_bus stay in it; WorkerTraceSubscriber closes the unit afterwards. A message received inside another unit (sync:// transport) restores the outer trace
- * once handled.
+ * dispatch_after_current_bus stay in it; WorkerTraceSubscriber closes the unit afterwards.
+ * A message received inside another unit (sync:// transport) restores the outer trace once
+ * handled.
  */
 final class IncomingStampMiddleware implements MiddlewareInterface
 {

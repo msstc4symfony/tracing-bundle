@@ -8,3 +8,7 @@
   заголовков), `extra` в логах (`monolog` handler `test`), `services_resetter`, Guzzle.
 - Каталог кеша ядра — на процесс (`getmypid()`): infection параллелит PHPUnit.
 - Моки без ожиданий дают notice — `createStub()`.
+- Messenger: `MessageBusTraceTest` (настоящая шина, sync/deferred), `WorkerTraceTest`
+  (настоящий `Worker`: батч-flush, остановка, running/idle-тики), `UnitBoundaryTest` (защиты по
+  вложенности). Ядро настраивает две шины с нашими middleware — проверка, что подписчик и
+  шины делят один экземпляр `IncomingStampMiddleware`.

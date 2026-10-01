@@ -30,15 +30,19 @@
 
 `Worker::flush()` повторно диспатчит отложенный батч (с `ReceivedStamp`) и, если что-то
 подтвердил, делает `continue` без `WorkerRunningEvent`. Поэтому unit закрывается ещё и на
-`WorkerMessageReceivedEvent` (priority 4096) и `WorkerStoppedEvent`. Непокрытое окно: один
-`receiver->get()` сразу после flush по 30-секундному таймауту (`flush(30.0)`) идёт в трассе
-батча — Messenger не даёт события между ними. Ловит `tests/Unit/Messenger/WorkerTraceTest`
-(настоящий `Worker` + `BatchHandlerTrait` + `MockClock`).
+`WorkerMessageReceivedEvent` (priority 4096) и `WorkerStoppedEvent`. Непокрытое окно — всё
+между таким flush и следующим `WorkerMessageReceivedEvent`, в трассе батча: оба пути
+(`flush(false)` при пустом опросе и `flush(30.0)` по таймауту) → `get()` по всем receivers,
+`rateLimit()` с его логом и `WorkerRateLimitedEvent`. Messenger не даёт события между ними.
+Ловит `tests/Unit/Messenger/WorkerTraceTest` (настоящий `Worker` + `BatchHandlerTrait` +
+`MockClock`); проверяется отсутствие утечки, а не точный порядок событий `Worker`.
 
 ## Idle-тики воркера
 
 `WorkerRunningEvent(idle)` приходит каждые `sleep` секунд. Сброс на нём только при открытом
-unit — иначе `messenger:consume` получал бы новый runtime id каждую секунду.
+unit — иначе `messenger:consume` получал бы новый runtime id каждую секунду. До первого
+сообщения idle-тики идут в трассе команды, после — в одной свежей трассе (сброс при закрытии
+unit; `kernel.reset` из `ResetServicesListener` всё равно сбрасывает после каждого сообщения).
 
 ## Guzzle 8: `ClientInterface::getConfig()` удаляется
 

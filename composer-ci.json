@@ -45,6 +45,7 @@
     "roave/backward-compatibility-check": "^8.20",
     "roave/security-advisories": "dev-latest",
     "sentry/sentry": "^4.10",
+    "symfony/clock": "^6.4|^7.0|^8.0",
     "symfony/http-client": "^6.4|^7.0|^8.0",
     "symfony/messenger": "^6.4|^7.0|^8.0",
     "symfony/monolog-bundle": "^3.11|^4.0"
