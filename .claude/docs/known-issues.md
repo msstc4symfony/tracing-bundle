@@ -23,8 +23,22 @@
 Сброс в `finally` после каждого полученного сообщения: при `sync://` из HTTP-запроса
 затирал контекст запроса (ответ уходил с чужим `request-id`), а сообщения из
 `dispatch_after_current_bus` и логи ack воркера оставались без трассы. Сейчас —
-счётчик вложенности, снимок/восстановление и `WorkerRunningEvent`; ловит
+счётчик вложенности, снимок/восстановление и закрытие unit в `WorkerTraceSubscriber`; ловит
 `tests/Unit/Messenger/MessageBusTraceTest` на настоящей шине.
+
+## Батч-обработчики: `Worker` пропускает `WorkerRunningEvent` после flush
+
+`Worker::flush()` повторно диспатчит отложенный батч (с `ReceivedStamp`) и, если что-то
+подтвердил, делает `continue` без `WorkerRunningEvent`. Поэтому unit закрывается ещё и на
+`WorkerMessageReceivedEvent` (priority 4096) и `WorkerStoppedEvent`. Непокрытое окно: один
+`receiver->get()` сразу после flush по 30-секундному таймауту (`flush(30.0)`) идёт в трассе
+батча — Messenger не даёт события между ними. Ловит `tests/Unit/Messenger/WorkerTraceTest`
+(настоящий `Worker` + `BatchHandlerTrait` + `MockClock`).
+
+## Idle-тики воркера
+
+`WorkerRunningEvent(idle)` приходит каждые `sleep` секунд. Сброс на нём только при открытом
+unit — иначе `messenger:consume` получал бы новый runtime id каждую секунду.
 
 ## Guzzle 8: `ClientInterface::getConfig()` удаляется
 

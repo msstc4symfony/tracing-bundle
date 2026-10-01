@@ -14,12 +14,12 @@
 
 `reset()` = новый runtime id + забыть request id/from. Вызывается: `kernel.reset`,
 главный HTTP-запрос, консольная команда, перед сообщением, полученным воркером,
-и на `WorkerRunningEvent` (`ResetTraceOnWorkerRunning`). Request id генерируется лениво.
+и при закрытии unit воркера (`WorkerTraceSubscriber`). Request id генерируется лениво.
 
 Messenger (`IncomingStampMiddleware`, счётчик вложенности):
 - сообщение верхнего уровня воркера (`ReceivedStamp`, вложенность 0) — сброс + трасса
   из штампа; **после обработки не сбрасывается**: лог ack/fail воркера и сообщения,
-  отпущенные `dispatch_after_current_bus`, остаются в трассе; чистит `WorkerRunningEvent`;
+  отпущенные `dispatch_after_current_bus`, остаются в трассе; unit закрывает `WorkerTraceSubscriber` → `IncomingStampMiddleware::closeUnit()` на `WorkerMessageReceivedEvent` (priority 4096), `WorkerRunningEvent`, `WorkerStoppedEvent`; только если unit открыт и вложенность 0 — idle-тики не сбрасывают трассу команды;
 - сообщение, полученное внутри другой единицы работы (`sync://` из HTTP или из другого
   обработчика) — снимок `snapshot()` до, `restore()` после.
 

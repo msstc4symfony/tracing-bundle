@@ -27,10 +27,9 @@ final class GuzzlePass implements CompilerPassInterface
                 continue;
             }
 
-            $class = $container->getParameterBag()->resolveValue($definition->getClass());
-            // getReflectionClass() survives classes whose parent comes from a missing package;
-            // is_a() would autoload them into a fatal error.
-            $reflection = is_string($class) ? $container->getReflectionClass($class, false) : null;
+            // getReflectionClass() resolves parameters and survives classes whose parent comes
+            // from a missing package; is_a() would autoload them into a fatal error.
+            $reflection = $container->getReflectionClass($definition->getClass(), false);
             if (!$reflection instanceof ReflectionClass || !$reflection->implementsInterface(ClientInterface::class)) {
                 continue;
             }

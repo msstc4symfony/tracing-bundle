@@ -61,7 +61,7 @@ final class StampMiddlewareTest extends TestCase
         new IncomingStampMiddleware($this->storage)->handle($envelope, $stack);
 
         self::assertSame(['abc', 'billing:api'], $seen);
-        // Kept for the worker's ack logs; ResetTraceOnWorkerRunning clears it.
+        // Kept for the worker's ack logs; WorkerTraceSubscriber clears it.
         self::assertSame('abc', $this->storage->getRequestId());
     }
 

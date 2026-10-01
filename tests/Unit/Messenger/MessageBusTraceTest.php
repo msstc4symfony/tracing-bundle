@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Unit\Messenger;
 
 use LogicException;
-use Msstc4Symfony\TracingBundle\Messenger\EventListener\ResetTraceOnWorkerRunning;
+use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
@@ -36,7 +36,7 @@ use Symfony\Component\Messenger\Transport\Sync\SyncTransport;
  */
 #[CoversClass(IncomingStampMiddleware::class)]
 #[CoversClass(OutgoingStampMiddleware::class)]
-#[CoversClass(ResetTraceOnWorkerRunning::class)]
+#[CoversClass(WorkerTraceSubscriber::class)]
 #[UsesClass(RequestIdService::class)]
 #[UsesClass(RequestIdStamp::class)]
 #[UsesClass(TraceContext::class)]
@@ -46,6 +46,8 @@ final class MessageBusTraceTest extends TestCase
 
     private InMemoryTransport $async;
 
+    private IncomingStampMiddleware $incoming;
+
     /** @var array<string, array{string, string}> */
     private array $seen = [];
 
@@ -53,6 +55,7 @@ final class MessageBusTraceTest extends TestCase
     {
         $this->storage = new RequestIdService('shop', 'api');
         $this->async = new InMemoryTransport();
+        $this->incoming = new IncomingStampMiddleware($this->storage);
     }
 
     public function testSyncTransportKeepsTheCallersTraceAfterDispatch(): void
@@ -80,7 +83,7 @@ final class MessageBusTraceTest extends TestCase
         self::assertSame('t1', $deferred->last(RequestIdStamp::class)?->requestId);
         self::assertSame('t1', $this->storage->getRequestId());
 
-        new ResetTraceOnWorkerRunning($this->storage)->onWorkerRunning();
+        new WorkerTraceSubscriber($this->incoming)->closeUnit();
 
         self::assertNotSame('t1', $this->storage->getRequestId());
     }
@@ -118,7 +121,7 @@ final class MessageBusTraceTest extends TestCase
         return $busProxy->bus = new MessageBus([
             new DispatchAfterCurrentBusMiddleware(),
             new OutgoingStampMiddleware($this->storage),
-            new IncomingStampMiddleware($this->storage),
+            $this->incoming,
             new SendMessageMiddleware($senders),
             new HandleMessageMiddleware($handlers),
         ]);

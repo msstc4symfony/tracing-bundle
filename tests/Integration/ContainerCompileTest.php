@@ -9,6 +9,7 @@ use GuzzleHttp\HandlerStack;
 use Monolog\Handler\TestHandler;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\GuzzleConsumer;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TestKernel;
 use Override;
@@ -97,6 +98,18 @@ final class ContainerCompileTest extends KernelTestCase
         $client = self::getContainer()->get($id);
         self::assertInstanceOf(Client::class, $client);
         $stack = $client->getConfig('handler');
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        self::assertStringContainsString(RequestIdGuzzleHandler::MIDDLEWARE_NAME, (string) $stack);
+    }
+
+    public function testInlinedGuzzleClientKeepsTheTracingMiddleware(): void
+    {
+        self::bootKernel();
+
+        $consumer = self::getContainer()->get(TestKernel::GUZZLE_CONSUMER);
+        self::assertInstanceOf(GuzzleConsumer::class, $consumer);
+        self::assertInstanceOf(Client::class, $consumer->client);
+        $stack = $consumer->client->getConfig('handler');
         self::assertInstanceOf(HandlerStack::class, $stack);
         self::assertStringContainsString(RequestIdGuzzleHandler::MIDDLEWARE_NAME, (string) $stack);
     }

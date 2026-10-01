@@ -11,6 +11,7 @@ use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\MonologBundle\MonologBundle;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Kernel;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
@@ -22,6 +23,8 @@ final class TestKernel extends Kernel
     public const string GUZZLE_CLIENT = 'test.guzzle';
 
     public const string GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
+
+    public const string GUZZLE_CONSUMER = 'test.guzzle.consumer';
 
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string
@@ -75,6 +78,12 @@ final class TestKernel extends Kernel
         // Class known only after child definitions are resolved.
         $services->set('test.guzzle.parent', Client::class)->abstract();
         $services->set(self::GUZZLE_CHILD_CLIENT)->parent('test.guzzle.parent')->public();
+        // A private client injected into another service, as most applications wire Guzzle.
+        $services->set('test.guzzle.inlined', Client::class);
+        $services->set(self::GUZZLE_CONSUMER, GuzzleConsumer::class)
+            ->args([new Reference('test.guzzle.inlined')])
+            ->public()
+        ;
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.http_client', 'http_client')->public();
         $services->alias('test.logger', 'logger')->public();
