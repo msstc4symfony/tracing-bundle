@@ -53,6 +53,10 @@ final class MessageBusTraceTest extends TestCase
 
     protected function setUp(): void
     {
+        if (!class_exists(MessageBus::class)) {
+            self::markTestSkipped('symfony/messenger is not installed');
+        }
+
         $this->storage = new RequestIdService('shop', 'api');
         $this->async = new InMemoryTransport();
         $this->incoming = new IncomingStampMiddleware($this->storage);

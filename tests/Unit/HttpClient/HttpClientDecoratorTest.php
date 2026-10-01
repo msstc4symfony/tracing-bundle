@@ -25,6 +25,10 @@ final class HttpClientDecoratorTest extends TestCase
 
     protected function setUp(): void
     {
+        if (!class_exists(MockHttpClient::class)) {
+            self::markTestSkipped('symfony/http-client is not installed');
+        }
+
         $this->inner = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $this->sentHeaders[] = $this->headersOf($options);
 

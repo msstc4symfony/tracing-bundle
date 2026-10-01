@@ -25,6 +25,10 @@ final class RequestIdGuzzleHandlerTest extends TestCase
 
     protected function setUp(): void
     {
+        if (!class_exists(Client::class)) {
+            self::markTestSkipped('guzzlehttp/guzzle is not installed');
+        }
+
         $this->transport = new MockHandler([new Response(), new Response()]);
         $this->client = new Client(['handler' => HandlerStack::create($this->transport)]);
     }

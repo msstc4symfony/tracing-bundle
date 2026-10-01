@@ -55,9 +55,17 @@ unit; `kernel.reset` из `ResetServicesListener` всё равно сбрасы
 `GuzzlePass` не заменяет чужой configurator. Такому клиенту middleware надо добавить
 вручную: `RequestIdGuzzleHandler::addHandler($client)`.
 
-## Гарды опциональных библиотек не проверяются в CI
+## Гарды опциональных библиотек проверяет CI-job «PHPUnit without optional libraries»
 
-В отличие от metrics, отдельного job «без опциональных библиотек» нет: тесты
-интеграций используют сами библиотеки. Гарды в `services.php` проверены вручную
-2026-10-01: установка только `composer.json` (без Guzzle, Messenger, Sentry, HttpClient,
-MonologBundle) — ядро собирается, ни одна опциональная интеграция не регистрируется.
+bundle-standard v1.7.x ставит только `composer.json` и гоняет `vendor/bin/phpunit`.
+Тест, которому нужен пакет из одного `composer-ci.json` (Guzzle, Messenger, Clock, Sentry,
+HttpClient, MonologBundle), пропускается гардом в `setUp()`/начале метода
+(`class_exists`/`interface_exists`/`trait_exists` → `markTestSkipped('<pkg> is not installed')`).
+Именованный класс в файле теста, который extends/implements/use опционального типа, роняет
+загрузку файла фаталом — такие фикстуры живут в отдельных файлах (`tests/Unit/Messenger/Fixture/`).
+`TestKernel` подключает MonologBundle, `http_client`, `messenger` и Guzzle-сервисы только при
+наличии пакета (`TestKernel::has*()`), поэтому в минимальной установке ядро всё равно
+собирается и `testIncomingTraceIsReturnedInTheResponse`/`testKernelResetForgetsTheTrace`
+реально проверяют гарды `services.php`. Без MonologBundle ядро ставит `logger` = `NullLogger`:
+fallback-логгер FrameworkBundle пишет debug в stderr. Итог 2026-10-01: минимальная установка —
+49 тестов, 34 skipped; полный профиль — 49, 0 skipped.

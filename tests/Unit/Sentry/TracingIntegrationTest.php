@@ -18,6 +18,13 @@ use Sentry\State\Scope;
 #[UsesClass(RequestIdService::class)]
 final class TracingIntegrationTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        if (!class_exists(ClientBuilder::class)) {
+            self::markTestSkipped('sentry/sentry is not installed');
+        }
+    }
+
     public function testAddsTheTraceToSentryEvents(): void
     {
         $storage = new RequestIdService('shop', 'api')->setRequestId('abc')->setRequestFrom('billing:api');

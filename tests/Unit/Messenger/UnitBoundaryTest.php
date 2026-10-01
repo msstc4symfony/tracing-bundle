@@ -36,6 +36,10 @@ final class UnitBoundaryTest extends TestCase
 
     protected function setUp(): void
     {
+        if (!class_exists(Envelope::class)) {
+            self::markTestSkipped('symfony/messenger is not installed');
+        }
+
         $this->storage = new RequestIdService('shop', 'api');
         $this->incoming = new IncomingStampMiddleware($this->storage);
     }

@@ -10,6 +10,9 @@ use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use Msstc4Symfony\TracingBundle\Storage\TraceContext;
+use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\BatchedMessage;
+use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\BatchHandler;
+use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\SlowMessage;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
@@ -19,9 +22,6 @@ use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
-use Symfony\Component\Messenger\Handler\Acknowledger;
-use Symfony\Component\Messenger\Handler\BatchHandlerInterface;
-use Symfony\Component\Messenger\Handler\BatchHandlerTrait;
 use Symfony\Component\Messenger\Handler\HandlerDescriptor;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
@@ -47,6 +47,14 @@ final class WorkerTraceTest extends TestCase
 
     protected function setUp(): void
     {
+        if (!class_exists(Worker::class)) {
+            self::markTestSkipped('symfony/messenger is not installed');
+        }
+
+        if (!class_exists(MockClock::class)) {
+            self::markTestSkipped('symfony/clock is not installed');
+        }
+
         $this->storage = new RequestIdService('shop', 'worker');
     }
 
@@ -169,45 +177,5 @@ final class WorkerTraceTest extends TestCase
 
         new Worker(['queue' => $receiver], $bus, $dispatcher, null, null, $clock)->run(['sleep' => 0]);
         $this->log[] = 'stopped:' . $this->storage->getRequestId();
-    }
-}
-
-final class BatchedMessage
-{
-}
-
-final class SlowMessage
-{
-}
-
-final class BatchHandler implements BatchHandlerInterface
-{
-    use BatchHandlerTrait;
-
-    /** @param Closure(string):void $onFlush */
-    public function __construct(
-        private readonly Closure $onFlush,
-    ) {
-    }
-
-    public function __invoke(BatchedMessage $message, ?Acknowledger $ack = null): mixed
-    {
-        return $this->handle($message, $ack);
-    }
-
-    /**
-     * @param list<array{object, Acknowledger}> $jobs
-     */
-    protected function process(array $jobs): void
-    {
-        foreach ($jobs as [, $ack]) {
-            ($this->onFlush)('flushed');
-            $ack->ack();
-        }
-    }
-
-    protected function getBatchSize(): int
-    {
-        return 100;
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\GuzzlePass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\HttpClientPass;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
@@ -15,6 +16,7 @@ use stdClass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpClient\DecoratorTrait;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 #[CoversClass(HttpClientPass::class)]
@@ -23,6 +25,10 @@ final class CompilerPassesTest extends TestCase
 {
     public function testDecoratesOnlyTheSharedTransport(): void
     {
+        if (!trait_exists(DecoratorTrait::class)) {
+            self::markTestSkipped('symfony/http-client is not installed');
+        }
+
         $container = new ContainerBuilder();
         $container->setDefinition(HttpClientPass::TRANSPORT_ID, new Definition(HttpClientInterface::class));
         $container->setDefinition('http_client', new Definition(HttpClientInterface::class));
@@ -49,6 +55,8 @@ final class CompilerPassesTest extends TestCase
 
     public function testConfiguresGuzzleClientsWithoutTouchingOthers(): void
     {
+        $this->requireGuzzle();
+
         $container = new ContainerBuilder();
         $container->setDefinition(RequestIdGuzzleHandler::class, new Definition(RequestIdGuzzleHandler::class));
         $container->setDefinition('github', new Definition(Client::class));
@@ -69,6 +77,8 @@ final class CompilerPassesTest extends TestCase
 
     public function testResolvesParameterisedClasses(): void
     {
+        $this->requireGuzzle();
+
         $container = new ContainerBuilder();
         $container->setParameter('app.client.class', Client::class);
         $container->setDefinition(RequestIdGuzzleHandler::class, new Definition(RequestIdGuzzleHandler::class));
@@ -81,6 +91,8 @@ final class CompilerPassesTest extends TestCase
 
     public function testSurvivesClassesWithAMissingParent(): void
     {
+        $this->requireGuzzle();
+
         // Generated at run time: a source file extending a missing class would fail static analysis.
         $class = 'Msstc4Symfony\\TracingBundle\\Test\\Generated\\OrphanClient';
         $file = sys_get_temp_dir() . '/msstc4symfony-tracing-orphan-client-' . getmypid() . '.php';
@@ -103,6 +115,13 @@ final class CompilerPassesTest extends TestCase
         } finally {
             spl_autoload_unregister($autoload);
             unlink($file);
+        }
+    }
+
+    private function requireGuzzle(): void
+    {
+        if (!interface_exists(ClientInterface::class)) {
+            self::markTestSkipped('guzzlehttp/guzzle is not installed');
         }
     }
 }

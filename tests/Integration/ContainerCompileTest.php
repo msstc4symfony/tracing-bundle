@@ -30,7 +30,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * Boots Framework + Monolog + Tracing: catches wiring the unit tests cannot see.
+ * Boots Framework + Tracing with whichever optional integrations are installed: catches
+ * wiring the unit tests cannot see.
  */
 final class ContainerCompileTest extends KernelTestCase
 {
@@ -64,6 +65,8 @@ final class ContainerCompileTest extends KernelTestCase
 
     public function testOutgoingHttpRequestCarriesTheTrace(): void
     {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+
         self::bootKernel();
         $container = self::getContainer();
         $this->storage()->setRequestId('abc');
@@ -79,6 +82,8 @@ final class ContainerCompileTest extends KernelTestCase
 
     public function testLogRecordsCarryTheTrace(): void
     {
+        $this->skipUnless(TestKernel::hasMonologBundle(), 'symfony/monolog-bundle');
+
         self::bootKernel();
         $container = self::getContainer();
         $this->storage()->setRequestId('abc');
@@ -108,6 +113,8 @@ final class ContainerCompileTest extends KernelTestCase
     #[TestWith([TestKernel::GUZZLE_CHILD_CLIENT])]
     public function testGuzzleClientsGetTheTracingMiddleware(string $id): void
     {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+
         self::bootKernel();
 
         $client = self::getContainer()->get($id);
@@ -119,6 +126,8 @@ final class ContainerCompileTest extends KernelTestCase
 
     public function testInlinedGuzzleClientKeepsTheTracingMiddleware(): void
     {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+
         self::bootKernel();
 
         $consumer = self::getContainer()->get(TestKernel::GUZZLE_CONSUMER);
@@ -131,6 +140,8 @@ final class ContainerCompileTest extends KernelTestCase
 
     public function testWorkerSubscriberSharesTheMiddlewareOfEveryBus(): void
     {
+        $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
+
         self::bootKernel();
         $dispatcher = self::getContainer()->get('event_dispatcher');
         self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
@@ -149,6 +160,13 @@ final class ContainerCompileTest extends KernelTestCase
         $middleware = new ReflectionProperty($subscriber, 'middleware')->getValue($subscriber);
         foreach (['test.bus.commands', 'test.bus.events'] as $busId) {
             self::assertContains($middleware, $this->middlewareOf($busId), $busId);
+        }
+    }
+
+    private function skipUnless(bool $installed, string $package): void
+    {
+        if (!$installed) {
+            self::markTestSkipped($package . ' is not installed');
         }
     }
 
