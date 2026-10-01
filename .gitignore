@@ -29,3 +29,7 @@ phpstan.neon
 /.php-cs-fixer.cache
 ###< friendsofphp/php-cs-fixer ###
 /.deptrac.cache
+
+# Local path-repository profile for developing against unreleased sibling bundles
+/composer-local.json
+/composer-local.lock

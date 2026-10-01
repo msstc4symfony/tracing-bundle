@@ -10,7 +10,11 @@
   "type": "symfony-bundle",
   "description": "Request tracing for Symfony: propagates request id and caller across HTTP, Messenger and logs",
   "minimum-stability": "stable",
-  "keywords": ["php", "symfony", "tracing"],
+  "keywords": [
+    "php",
+    "symfony",
+    "tracing"
+  ],
   "prefer-stable": true,
   "autoload": {
     "psr-4": {

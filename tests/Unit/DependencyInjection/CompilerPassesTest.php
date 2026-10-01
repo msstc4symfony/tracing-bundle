@@ -9,7 +9,6 @@ use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\GuzzlePass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\HttpClientPass;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Msstc4Symfony\TracingBundle\HttpClient\HttpClientDecorator;
-use Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection\Fixture\OrphanClient;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -82,12 +81,28 @@ final class CompilerPassesTest extends TestCase
 
     public function testSurvivesClassesWithAMissingParent(): void
     {
-        $container = new ContainerBuilder();
-        $container->setDefinition(RequestIdGuzzleHandler::class, new Definition(RequestIdGuzzleHandler::class));
-        $container->setDefinition('orphan', new Definition(OrphanClient::class));
+        // Generated at run time: a source file extending a missing class would fail static analysis.
+        $class = 'Msstc4Symfony\\TracingBundle\\Test\\Generated\\OrphanClient';
+        $file = sys_get_temp_dir() . '/msstc4symfony-tracing-orphan-client-' . getmypid() . '.php';
+        file_put_contents($file, "<?php\nnamespace Msstc4Symfony\\TracingBundle\\Test\\Generated;\nfinal class OrphanClient extends \\Not\\Installed\\BaseClient {}\n");
+        $autoload = static function (string $name) use ($class, $file): void {
+            if ($name === $class) {
+                require $file;
+            }
+        };
+        spl_autoload_register($autoload);
 
-        new GuzzlePass()->process($container);
+        try {
+            $container = new ContainerBuilder();
+            $container->setDefinition(RequestIdGuzzleHandler::class, new Definition(RequestIdGuzzleHandler::class));
+            $container->setDefinition('orphan', new Definition($class));
 
-        self::assertNull($container->getDefinition('orphan')->getConfigurator());
+            new GuzzlePass()->process($container);
+
+            self::assertNull($container->getDefinition('orphan')->getConfigurator());
+        } finally {
+            spl_autoload_unregister($autoload);
+            unlink($file);
+        }
     }
 }

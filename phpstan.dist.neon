@@ -6,9 +6,6 @@ parameters:
     paths:
         - src/
         - tests/
-    excludePaths:
-        # Deliberately extends a class from a package that is not installed.
-        - tests/Unit/DependencyInjection/Fixture/OrphanClient.php
 
 includes:
     - phpstan-baseline.neon

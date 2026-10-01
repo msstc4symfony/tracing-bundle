@@ -48,8 +48,6 @@ return RectorConfig::configure()
             NewlineAfterStatementRector::class,
             CatchExceptionNameMatchingTypeRector::class,
             CoversAnnotationWithValueToAttributeRector::class,
-            // The base composer.json does not install sentry/sentry.
-            __DIR__ . '/src/Sentry/*',
         ],
     )
 ;

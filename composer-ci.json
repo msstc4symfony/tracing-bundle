@@ -10,7 +10,11 @@
   "type": "symfony-bundle",
   "description": "Request tracing for Symfony (CI profile — installs optional libraries and CI-only tools)",
   "minimum-stability": "stable",
-  "keywords": ["php", "symfony", "tracing"],
+  "keywords": [
+    "php",
+    "symfony",
+    "tracing"
+  ],
   "prefer-stable": true,
   "autoload": {
     "psr-4": {
