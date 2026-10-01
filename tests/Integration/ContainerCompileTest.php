@@ -41,6 +41,13 @@ final class ContainerCompileTest extends KernelTestCase
     }
 
     #[Override]
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+        new Filesystem()->remove(TestKernel::cacheRoot());
+    }
+
+    #[Override]
     protected static function getKernelClass(): string
     {
         return TestKernel::class;
