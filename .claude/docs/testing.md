@@ -2,7 +2,10 @@
 
 - `tests/Unit` — по тесту на каждый класс с поведением; HttpClient — `MockHttpClient`,
   Guzzle — настоящий `Client` с `MockHandler`, Messenger — `StackMiddleware`,
-  Sentry — `Scope::applyToEvent()` после `SentrySdk::init()->bindClient()`.
+  Sentry — `Scope::applyToEvent()` после `SentrySdk::init()->bindClient()`; W3C-теги и
+  отсутствие утечки между unit'ами (`reset()`, `snapshot()/restore()`) — `TracingIntegrationTest`,
+  проводка в ядре — `W3cTraceContextTest::testSentryEventsAreTaggedWithTheW3cTrace` (алиас
+  `TestKernel::SENTRY_INTEGRATION`, только при установленном Sentry).
 - `tests/Integration/ContainerCompileTest` — ядро Framework + Tracing + установленные опциональные
   пакеты (см. known-issues: job без опциональных библиотек): заголовки
   входа/выхода, исходящий `http_client` (через `mock_response_factory` с записью

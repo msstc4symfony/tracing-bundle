@@ -7,9 +7,11 @@ namespace Msstc4Symfony\TracingBundle\Test\Integration\Kernel;
 use GuzzleHttp\Client;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
+use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
 use Msstc4Symfony\TracingBundle\TracingBundle;
 use Override;
 use Psr\Log\NullLogger;
+use Sentry\Integration\IntegrationInterface;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\MonologBundle\MonologBundle;
@@ -30,6 +32,8 @@ final class TestKernel extends Kernel
     public const string GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
 
     public const string GUZZLE_CONSUMER = 'test.guzzle.consumer';
+
+    public const string SENTRY_INTEGRATION = 'test.sentry.integration';
 
     public const string ENV_W3C_OFF = 'w3c_off';
 
@@ -92,6 +96,11 @@ final class TestKernel extends Kernel
     public static function hasGuzzle(): bool
     {
         return class_exists(Client::class);
+    }
+
+    public static function hasSentry(): bool
+    {
+        return interface_exists(IntegrationInterface::class);
     }
 
     protected function configureContainer(ContainerConfigurator $container): void
@@ -161,6 +170,10 @@ final class TestKernel extends Kernel
         } else {
             // FrameworkBundle's fallback logger writes debug records to stderr.
             $services->set('logger', NullLogger::class);
+        }
+
+        if (self::hasSentry()) {
+            $services->alias(self::SENTRY_INTEGRATION, TracingIntegration::class)->public();
         }
 
         if (self::hasGuzzle()) {

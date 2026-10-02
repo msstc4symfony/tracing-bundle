@@ -16,7 +16,7 @@ every service it touches:
 | HTTP | `request-id` / `request-from` request headers, W3C `traceparent` / `tracestate` | same headers on the response and on every Symfony HttpClient / Guzzle request; `traceparent` / `tracestate` on outgoing requests |
 | Messenger | `RequestIdStamp`, `TraceContextStamp` on consumed messages | `RequestIdStamp` on dispatched messages; `TraceContextStamp` (opt-in) |
 | Logs | — | `runtime_id`, `request_id`, `request_from` in every Monolog record's `extra`; `trace_id`, `span_id` with W3C on |
-| Sentry | — | `runtime_id`, `request_id`, `request_from` in every event's `extra` (opt-in) |
+| Sentry | — | `runtime_id`, `request_id`, `request_from` in every event's `extra`; `trace_id`, `span_id` tags with W3C on (opt-in) |
 
 ## Compatibility
 
@@ -64,7 +64,7 @@ Headers already set by the caller are never overwritten (`request-id` and `reque
 
 ## W3C Trace Context (OpenTelemetry interop)
 
-On by default since 1.1. It only adds headers and log keys; `request-id` handling is unchanged.
+On by default since 1.1. It only adds headers, log keys and Sentry tags; `request-id` handling is unchanged.
 Configuration: [doc/w3c_trace_context.yaml](doc/w3c_trace_context.yaml); switch it off with
 `msstc4symfony_tracing: { w3c_trace_context: false }`.
 
@@ -119,7 +119,19 @@ worker's own logs and for messages released by `dispatch_after_current_bus`, and
 before the next message. A message handled synchronously (`sync://`) returns to the caller's
 trace afterwards. A batch handler processes the whole batch in one message's trace.
 
-**Sentry** — add the integration ([doc/sentry.yaml](doc/sentry.yaml)).
+**Sentry** — add the integration ([doc/sentry.yaml](doc/sentry.yaml)). With W3C on (1.2+),
+every event is also tagged `trace_id` and `span_id` — the same values as the log keys, read from
+the current unit of work when the event is captured, so events are searchable by the trace id
+of their logs: search `trace_id:<id>` (the tag), not `trace:<id>`, which is Sentry's own trace.
+If the application already set either tag on the event, the bundle adds neither, so the pair
+never mixes the two sources.
+
+The event's `trace` context is left to Sentry: it holds Sentry's own trace (continued from
+`sentry-trace` / `baggage`; sentry/sentry 4.32 does not parse `traceparent`)
+and links errors to Sentry's transactions, so overwriting it would break Sentry tracing. Its
+`trace_id` therefore usually differs from the `trace_id` tag. The bundle does not register
+Sentry's external propagation context either: that hook replaces Sentry's own propagation
+(outgoing `sentry-trace` / `baggage`, dynamic sampling) and is the one the OTLP integration uses.
 
 ## Usage
 

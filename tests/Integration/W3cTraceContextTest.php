@@ -6,6 +6,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Integration;
 
 use Monolog\Handler\TestHandler;
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\TraceContextStamp;
+use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
 use Msstc4Symfony\TracingBundle\Storage\W3cTraceContextInterface;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
@@ -15,6 +16,10 @@ use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TracedMessageHandler;
 use Override;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Log\LoggerInterface;
+use Sentry\ClientBuilder;
+use Sentry\Event;
+use Sentry\SentrySdk;
+use Sentry\State\Scope;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\Request;
@@ -45,6 +50,11 @@ final class W3cTraceContextTest extends KernelTestCase
     protected function tearDown(): void
     {
         parent::tearDown();
+        if (TestKernel::hasSentry()) {
+            // The bound client holds this kernel's integration; later tests must not see it.
+            SentrySdk::init();
+        }
+
         new Filesystem()->remove(TestKernel::cacheRoot());
     }
 
@@ -132,6 +142,18 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertSame($this->w3c()->getTraceParent()->parentId, $extra['span_id'] ?? null);
     }
 
+    public function testSentryEventsAreTaggedWithTheW3cTrace(): void
+    {
+        $this->skipUnless(TestKernel::hasSentry(), 'sentry/sentry');
+        self::bootKernel();
+        $this->w3c()->continueTrace($this->traceParent());
+
+        $tags = $this->sentryEventTags();
+
+        self::assertSame(self::TRACE_ID, $tags['trace_id'] ?? null);
+        self::assertSame($this->w3c()->getTraceParent()->parentId, $tags['span_id'] ?? null);
+    }
+
     public function testMessagesAreNotStampedByDefault(): void
     {
         $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
@@ -217,6 +239,11 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertNotSame('4bf92f35-77b3-4da6-a3ce-929d0e0e4736', $response->headers->get('request-id'));
         self::assertFalse(self::getContainer()->has(W3cTraceContextInterface::class));
         $this->assertNoTraceParentIsSent($kernel);
+        if (TestKernel::hasSentry()) {
+            $tags = $this->sentryEventTags();
+            self::assertArrayNotHasKey('trace_id', $tags);
+            self::assertArrayNotHasKey('span_id', $tags);
+        }
         if (TestKernel::hasMessenger()) {
             $this->bus()->dispatch(new TracedMessage());
             self::assertNull($this->transport()->getSent()[0]?->last(TraceContextStamp::class));
@@ -234,6 +261,23 @@ final class W3cTraceContextTest extends KernelTestCase
         $sent = $this->sentHeaders();
         self::assertArrayHasKey('request-id', $sent);
         self::assertArrayNotHasKey('traceparent', $sent);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function sentryEventTags(): array
+    {
+        $integration = self::getContainer()->get(TestKernel::SENTRY_INTEGRATION);
+        self::assertInstanceOf(TracingIntegration::class, $integration);
+        SentrySdk::init()->bindClient(
+            ClientBuilder::create(['integrations' => [$integration], 'default_integrations' => false])->getClient(),
+        );
+
+        $event = new Scope()->applyToEvent(Event::createEvent());
+        self::assertInstanceOf(Event::class, $event);
+
+        return $event->getTags();
     }
 
     private function skipUnless(bool $installed, string $package): void

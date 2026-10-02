@@ -67,8 +67,8 @@ HttpClient, MonologBundle), пропускается гардом в `setUp()`/�
 наличии пакета (`TestKernel::has*()`), поэтому в минимальной установке ядро всё равно
 собирается и `testIncomingTraceIsReturnedInTheResponse`/`testKernelResetForgetsTheTrace`
 реально проверяют гарды `services.php`. Без MonologBundle ядро ставит `logger` = `NullLogger`:
-fallback-логгер FrameworkBundle пишет debug в stderr. Итог 2026-10-01: минимальная установка —
-49 тестов, 34 skipped; полный профиль — 49, 0 skipped.
+fallback-логгер FrameworkBundle пишет debug в stderr. Итог 2026-10-02 UTC (1.2.0): минимальная установка —
+162 теста, 68 skipped; полный профиль — 162, 0 skipped.
 
 ## W3C: новый класс штампа ломает декодирование у старых консьюмеров (2026-10-02 UTC)
 
@@ -111,3 +111,18 @@ span); внешний `traceParent` перед снимком запускает
   заголовков (массив / PSR-7 / штамп), условие «не перезаписывать tracestate» остаётся в каждой;
   выигрыш — 3 строки. В интерфейс добавлена оговорка про реализацию.
 - Config-объект вместо `$config['w3c_trace_context']` (CR-013): одно место, три строки.
+
+## Sentry: почему теги, а не контекст `trace` (1.2.0, 2026-10-02 UTC)
+
+Проверено на sentry/sentry 4.32: `Scope::applyToEvent()` **всегда** ставит `contexts.trace`
+(span → внешний propagation context → `PropagationContext` скоупа) до глобальных processors, так
+что «поставить, если нет» невозможно — только перезаписать. Перезапись ломает связь ошибки с
+транзакциями Sentry Performance. `Scope::registerExternalPropagationContext()` — один
+статический слот (его занимает `OTLPIntegration`), подменяет и исходящие `sentry-trace`/`baggage`
+и DSC, и есть не во всех 4.x — отклонено. `traceparent` SDK 4.32 не парсит
+(`TraceHeaderParserTrait` — только формат `sentry-trace`; `getW3CTraceparent()` с 4.12 возвращает
+`''`), поэтому trace id Sentry и W3C обычно различаются; коррелировать — по тегу `trace_id`.
+
+`setupOnce()` вызывается один раз на процесс (`IntegrationRegistry` — синглтон), processor
+находит интеграцию через текущий hub — в тестах каждый `SentrySdk::init()->bindClient()` с новым
+экземпляром работает.

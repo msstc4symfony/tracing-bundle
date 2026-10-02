@@ -60,3 +60,9 @@ Messenger (`IncomingStampMiddleware`, счётчик вложенности):
   маскируются до `0x03` (sampled|random).
 - Исходящий `traceparent` = `getTraceParent()->child()`: новый span id на каждый запрос /
   сообщение. Логи: `trace_id`, `span_id` (= свой span единицы работы).
+- Sentry (с 1.2.0): `TracingIntegration(?W3cTraceContextInterface $w3cTraceContext = null)` в
+  глобальном event processor ставит **теги** `trace_id`/`span_id` (те же значения, что в логах),
+  читая хранилище в момент захвата события; если на событии уже есть `trace_id` или `span_id`, не
+  добавляется ни один (пара не смешивает источники; ревью CR-001). На `Scope` ничего не
+  пишется — поэтому утечки между unit'ами нет, сброс — общий `reset()`. Контекст `trace`
+  события не трогаем (см. known-issues).

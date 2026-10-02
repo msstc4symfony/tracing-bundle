@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Sentry: with W3C Trace Context on, `TracingIntegration` tags every event with `trace_id` and
+  `span_id` (the values Monolog records carry), taken from the current unit of work when the
+  event is captured, so nothing carries over between requests or messages in a worker. If the event
+  already has either tag, neither is added. Sentry's own `trace` context and propagation are not
+  touched.
+- `TracingIntegration` takes the W3C context as a new optional constructor argument.
+
 ## 1.1.0
 
 - W3C Trace Context for OpenTelemetry interop, on by default (`w3c_trace_context`, config root
