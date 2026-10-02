@@ -1,0 +1,8 @@
+# config/packages/msstc4symfony_tracing.yaml
+msstc4symfony_tracing:
+  # true (default) | false | the map below.
+  w3c_trace_context:
+    enabled: true
+    # Also stamp dispatched messages with TraceContextStamp. Turn on only when every consumer
+    # runs tracing-bundle >= 1.1: older ones fail to decode a message carrying the new stamp.
+    messenger: false

@@ -69,3 +69,45 @@ HttpClient, MonologBundle), пропускается гардом в `setUp()`/�
 реально проверяют гарды `services.php`. Без MonologBundle ядро ставит `logger` = `NullLogger`:
 fallback-логгер FrameworkBundle пишет debug в stderr. Итог 2026-10-01: минимальная установка —
 49 тестов, 34 skipped; полный профиль — 49, 0 skipped.
+
+## W3C: новый класс штампа ломает декодирование у старых консьюмеров (2026-10-02 UTC)
+
+Проверено на symfony/messenger 8.1: сообщение со штампом неизвестного класса не декодируется —
+`Serializer` бросает `MessageDecodingFailedException` (`is_subclass_of` по классу штампа),
+`PhpSerializer` подменяет сообщение на `MessageDecodingFailedException` (в 6.4/7.x — исключение).
+Добавить поля в `RequestIdStamp` тоже нельзя: `unserialize` в `readonly`-класс без такого
+свойства → `Error: Cannot create dynamic property`. Поэтому `TraceContextStamp` отдельный и
+ставится только при `w3c_trace_context.messenger: true` (включать, когда все консьюмеры ≥ 1.1);
+читается всегда, когда W3C включён.
+
+## W3C при подмене `RequestIdServiceInterface`
+
+`W3cTraceContextPass` переводит алиас `W3cTraceContextInterface` на `RequestIdServiceInterface`,
+если класс приложенческого хранилища реализует оба интерфейса. Иначе W3C-состояние остаётся в
+`RequestIdService` (другой объект): слушатель его не сбрасывает (только `kernel.reset`), а
+`snapshot()/restore()` его не несут — описано в README.
+
+## sync:// без штампа (ревью 2026-10-02 UTC)
+
+При `messenger: false` sync-сообщение раньше получало новую случайную W3C-трассу: `enter()`
+делает `reset()`, а штампа нет. Теперь `IncomingStampMiddleware` для вложенной единицы без
+валидного штампа продолжает трассу внешней (`continueTrace(outer->traceParent)`, дочерний
+span); внешний `traceParent` перед снимком запускается, чтобы обе стороны делили trace-id.
+
+## Логи до `HTTPRequestListener` (priority 100)
+
+`RequestIdProcessor` лениво запускает W3C-трассу (`getTraceParent()`), как и request id.
+Записи до слушателя получат trace_id, который слушатель затем сбросит — как и request_id
+с 1.0.0.
+
+## Эквивалентный мутант `TraceParent::randomId()`
+
+`DoWhile` → `while (false)` не убить: повтор нужен только при нулевом id (вероятность 2^-64 /
+2^-128). Цикл оставлен — спецификация запрещает нулевые id.
+
+## Решения по ревью 1.1.0, отклонённые
+
+- Общий DTO «traceparent + tracestate» для трёх интеграций (CR-008): у каждой свой API
+  заголовков (массив / PSR-7 / штамп), условие «не перезаписывать tracestate» остаётся в каждой;
+  выигрыш — 3 строки. В интерфейс добавлена оговорка про реализацию.
+- Config-объект вместо `$config['w3c_trace_context']` (CR-013): одно место, три строки.

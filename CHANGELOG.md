@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0
+
+- W3C Trace Context for OpenTelemetry interop, on by default (`w3c_trace_context`, config root
+  `msstc4symfony_tracing`). It adds headers and log keys only; `request-id` / `request-from`
+  behave as before.
+  - Incoming `traceparent` is validated per spec (invalid ones ignored) and kept with its
+    `tracestate` (entries validated, at most 32, truncated to 512 characters as the spec says).
+  - Only the sampled and random trace flags are forwarded; reserved bits are cleared.
+  - Without `request-id`, a valid `traceparent` gives the request id: its trace id in UUID spelling.
+  - HttpClient and Guzzle send `traceparent` (same trace, new span id per request, flags kept)
+    and `tracestate`; a new trace is started when none was received.
+  - Messenger: `TraceContextStamp` is read on consumed messages; stamping dispatched messages is
+    opt-in (`w3c_trace_context.messenger: true`) because consumers on 1.0 cannot decode it.
+  - Monolog `extra` gains `trace_id` and `span_id`.
+- The bundle now has a configuration tree under `msstc4symfony_tracing` (the parameter prefix
+  it already used). A leftover empty `tracing:` key from 1.0 must be removed.
+- An application storage that implements both `RequestIdServiceInterface` and
+  `W3cTraceContextInterface` is used for W3C too (`W3cTraceContextPass`).
+- New API: `Storage\W3cTraceContextInterface` (implemented by `RequestIdService`, aliased only
+  while enabled), `Storage\W3c\TraceParent`, `Storage\W3c\TraceState`,
+  `Messenger\Stamp\TraceContextStamp`; header constants `HTTPRequestListener::TRACEPARENT_HEADER`
+  / `TRACESTATE_HEADER`. Integrations take the W3C context as a new optional constructor argument.
+
 ## 1.0.0
 
 First release as `msstc4symfony/tracing-bundle` (`Msstc4Symfony\TracingBundle`), MIT.

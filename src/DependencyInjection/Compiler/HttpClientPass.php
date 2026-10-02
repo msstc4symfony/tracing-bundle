@@ -6,9 +6,11 @@ namespace Msstc4Symfony\TracingBundle\DependencyInjection\Compiler;
 
 use Msstc4Symfony\TracingBundle\HttpClient\HttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Storage\W3cTraceContextInterface;
 use Override;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpClient\DecoratorTrait;
 
@@ -42,6 +44,8 @@ final class HttpClientPass implements CompilerPassInterface
         $container->register(self::DECORATOR_ID, HttpClientDecorator::class)
             ->setArgument('$inner', new Reference(self::DECORATOR_ID . '.inner'))
             ->setArgument('$requestIdService', new Reference(RequestIdServiceInterface::class))
+            // Registered only while w3c_trace_context is enabled.
+            ->setArgument('$w3cTraceContext', new Reference(W3cTraceContextInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE))
             ->setDecoratedService(self::TRANSPORT_ID, null, self::DECORATION_PRIORITY)
         ;
     }

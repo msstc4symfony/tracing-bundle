@@ -4,17 +4,25 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Storage;
 
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
 use Override;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Uid\Uuid;
 
-final class RequestIdService implements RequestIdServiceInterface
+final class RequestIdService implements RequestIdServiceInterface, W3cTraceContextInterface
 {
     private string $runtimeId;
 
     private ?string $requestId = null;
 
     private ?string $requestFrom = null;
+
+    private ?TraceParent $traceParent = null;
+
+    private ?TraceParent $remoteTraceParent = null;
+
+    private ?TraceState $traceState = null;
 
     public function __construct(
         #[Autowire(param: 'msstc4symfony_tracing.application_name')]
@@ -44,6 +52,9 @@ final class RequestIdService implements RequestIdServiceInterface
     {
         $this->requestId = null;
         $this->requestFrom = null;
+        $this->traceParent = null;
+        $this->remoteTraceParent = null;
+        $this->traceState = null;
     }
 
     #[Override]
@@ -98,7 +109,14 @@ final class RequestIdService implements RequestIdServiceInterface
     #[Override]
     public function snapshot(): TraceContext
     {
-        return new TraceContext($this->runtimeId, $this->requestId, $this->requestFrom);
+        return new TraceContext(
+            $this->runtimeId,
+            $this->requestId,
+            $this->requestFrom,
+            $this->traceParent,
+            $this->remoteTraceParent,
+            $this->traceState,
+        );
     }
 
     #[Override]
@@ -107,6 +125,43 @@ final class RequestIdService implements RequestIdServiceInterface
         $this->runtimeId = $context->runtimeId;
         $this->requestId = $context->requestId;
         $this->requestFrom = $context->requestFrom;
+        $this->traceParent = $context->traceParent;
+        $this->remoteTraceParent = $context->remoteTraceParent;
+        $this->traceState = $context->traceState;
+    }
+
+    #[Override]
+    public function continueTrace(TraceParent $received, ?TraceState $state = null): static
+    {
+        $this->remoteTraceParent = $received;
+        $this->traceParent = $received->child();
+        $this->traceState = $state;
+
+        return $this;
+    }
+
+    #[Override]
+    public function getTraceParent(): TraceParent
+    {
+        return $this->traceParent ??= TraceParent::start();
+    }
+
+    #[Override]
+    public function getRemoteTraceParent(): ?TraceParent
+    {
+        return $this->remoteTraceParent;
+    }
+
+    #[Override]
+    public function getTraceState(): ?TraceState
+    {
+        return $this->traceState;
+    }
+
+    #[Override]
+    public function createOutgoingTraceParent(): TraceParent
+    {
+        return $this->getTraceParent()->child();
     }
 
     /**

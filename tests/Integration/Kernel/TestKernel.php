@@ -31,6 +31,14 @@ final class TestKernel extends Kernel
 
     public const string GUZZLE_CONSUMER = 'test.guzzle.consumer';
 
+    public const string ENV_W3C_OFF = 'w3c_off';
+
+    public const string ENV_W3C_MESSENGER = 'w3c_messenger';
+
+    public const string ENV_W3C_TRUE = 'w3c_true';
+
+    public const string ENV_W3C_DISABLED_MAP = 'w3c_disabled_map';
+
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string
     {
@@ -105,6 +113,7 @@ final class TestKernel extends Kernel
             $services->set(RecordingResponseFactory::class)->public();
             // Unused services are removed on compile; the tests fetch these.
             $services->alias('test.http_client', 'http_client')->public();
+            $services->set(OutgoingCallController::class)->autowire()->tag('controller.service_arguments')->public();
         }
 
         if (self::hasMessenger()) {
@@ -114,12 +123,35 @@ final class TestKernel extends Kernel
                     'bus.commands' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
                     'bus.events' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
                 ],
+                // Serialized, so the stamps go through the default serializer as on a real transport.
+                'transports' => ['async' => 'in-memory://?serialize=true'],
+                'routing' => [TracedMessage::class => 'async'],
             ];
             $services->alias('test.bus.commands', 'bus.commands')->public();
             $services->alias('test.bus.events', 'bus.events')->public();
+            $services->alias('test.transport.async', 'messenger.transport.async')->public();
+
+            if (!in_array($this->environment, [self::ENV_W3C_OFF, self::ENV_W3C_DISABLED_MAP], true)) {
+                $services->set(TracedMessageHandler::class)
+                    ->autowire()
+                    ->tag('messenger.message_handler', ['bus' => 'bus.commands', 'handles' => TracedMessage::class])
+                    ->public()
+                ;
+            }
         }
 
         $container->extension('framework', $framework);
+
+        $tracing = match ($this->environment) {
+            self::ENV_W3C_OFF => ['w3c_trace_context' => false],
+            self::ENV_W3C_MESSENGER => ['w3c_trace_context' => ['messenger' => true]],
+            self::ENV_W3C_TRUE => ['w3c_trace_context' => true],
+            self::ENV_W3C_DISABLED_MAP => ['w3c_trace_context' => ['enabled' => false, 'messenger' => true]],
+            default => null,
+        };
+        if ($tracing !== null) {
+            $container->extension('msstc4symfony_tracing', $tracing);
+        }
 
         if (self::hasMonologBundle()) {
             $container->extension('monolog', [
@@ -148,5 +180,9 @@ final class TestKernel extends Kernel
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->add('ping', '/ping')->controller('kernel::ping');
+
+        if (self::hasHttpClient()) {
+            $routes->add('call', '/call')->controller(OutgoingCallController::class);
+        }
     }
 }

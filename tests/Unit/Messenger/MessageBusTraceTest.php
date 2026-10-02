@@ -9,8 +9,11 @@ use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
+use Msstc4Symfony\TracingBundle\Messenger\Stamp\TraceContextStamp;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use Msstc4Symfony\TracingBundle\Storage\TraceContext;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
@@ -40,6 +43,9 @@ use Symfony\Component\Messenger\Transport\Sync\SyncTransport;
 #[UsesClass(RequestIdService::class)]
 #[UsesClass(RequestIdStamp::class)]
 #[UsesClass(TraceContext::class)]
+#[UsesClass(TraceContextStamp::class)]
+#[UsesClass(TraceParent::class)]
+#[UsesClass(TraceState::class)]
 final class MessageBusTraceTest extends TestCase
 {
     private RequestIdService $storage;
@@ -51,6 +57,9 @@ final class MessageBusTraceTest extends TestCase
     /** @var array<string, array{string, string}> */
     private array $seen = [];
 
+    /** @var array<string, array{?string, string}> */
+    private array $seenW3c = [];
+
     protected function setUp(): void
     {
         if (!class_exists(MessageBus::class)) {
@@ -59,7 +68,7 @@ final class MessageBusTraceTest extends TestCase
 
         $this->storage = new RequestIdService('shop', 'api');
         $this->async = new InMemoryTransport();
-        $this->incoming = new IncomingStampMiddleware($this->storage);
+        $this->incoming = new IncomingStampMiddleware($this->storage, $this->storage);
     }
 
     public function testSyncTransportKeepsTheCallersTraceAfterDispatch(): void
@@ -73,6 +82,30 @@ final class MessageBusTraceTest extends TestCase
         self::assertSame('http-abc', $this->storage->getRequestId());
         self::assertSame('billing:api', $this->storage->getRequestFrom());
         self::assertSame($runtimeId, $this->storage->getRuntimeId());
+    }
+
+    public function testSyncTransportContinuesTheW3cTraceAndRestoresTheCallersSpan(): void
+    {
+        $own = $this->storage->getTraceParent();
+
+        $this->bus()->dispatch(new SyncMessage());
+
+        [$parentId, $traceId] = $this->seenW3c[SyncMessage::class] ?? [null, null];
+        self::assertSame($own->traceId, $traceId);
+        self::assertNotNull($parentId);
+        self::assertNotSame($own->parentId, $parentId);
+        self::assertSame($own, $this->storage->getTraceParent());
+        self::assertNull($this->storage->getRemoteTraceParent());
+    }
+
+    public function testSyncTransportKeepsTheW3cTraceWhenMessagesAreNotStamped(): void
+    {
+        $this->bus(stampW3c: false)->dispatch(new SyncMessage());
+
+        [$parentId, $traceId] = $this->seenW3c[SyncMessage::class] ?? [null, null];
+        $own = $this->storage->getTraceParent();
+        self::assertSame($own->traceId, $traceId);
+        self::assertSame($own->parentId, $parentId);
     }
 
     public function testConsumedMessageKeepsItsTraceForDeferredDispatchAndWorkerLogs(): void
@@ -92,7 +125,7 @@ final class MessageBusTraceTest extends TestCase
         self::assertNotSame('t1', $this->storage->getRequestId());
     }
 
-    private function bus(): MessageBusInterface
+    private function bus(bool $stampW3c = true): MessageBusInterface
     {
         // SyncTransport needs the bus it belongs to; the proxy closes that loop.
         $busProxy = new class implements MessageBusInterface {
@@ -116,6 +149,7 @@ final class MessageBusTraceTest extends TestCase
         $handlers = new HandlersLocator([
             SyncMessage::class => [function (): void {
                 $this->seen[SyncMessage::class] = [$this->storage->getRequestId(), $this->storage->getRequestFrom()];
+                $this->seenW3c[SyncMessage::class] = [$this->storage->getRemoteTraceParent()?->parentId, $this->storage->getTraceParent()->traceId];
             }],
             ConsumedMessage::class => [function () use ($busProxy): void {
                 $busProxy->dispatch(new DeferredMessage(), [new DispatchAfterCurrentBusStamp()]);
@@ -124,7 +158,7 @@ final class MessageBusTraceTest extends TestCase
 
         return $busProxy->bus = new MessageBus([
             new DispatchAfterCurrentBusMiddleware(),
-            new OutgoingStampMiddleware($this->storage),
+            new OutgoingStampMiddleware($this->storage, $stampW3c ? $this->storage : null),
             $this->incoming,
             new SendMessageMiddleware($senders),
             new HandleMessageMiddleware($handlers),

@@ -25,6 +25,9 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 - Exits read it: `HttpClient\HttpClientDecorator` on `http_client.transport` (priority -15),
   Guzzle middleware via a service configurator (`GuzzlePass`), `OutgoingStampMiddleware`,
   `RequestIdProcessor`, `TracingIntegration`.
+- W3C Trace Context (1.1+, `msstc4symfony_tracing.w3c_trace_context`): state lives in
+  `RequestIdService` (`W3cTraceContextInterface`); integrations take it as an optional argument,
+  null unless the alias is registered (`DependencyInjection\W3cTraceContextWiring`).
 - `Resources/config/services.php` registers optional integrations behind `interface_exists`.
   Rector's `FromServicePublicToDefaultsPublicRector` and `ServiceSettersToSettersAutodiscoveryRector`
   are skipped on purpose — they rewrite this file into public autodiscovery.

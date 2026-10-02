@@ -10,6 +10,8 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -17,6 +19,8 @@ use Psr\Http\Message\RequestInterface;
 
 #[CoversClass(RequestIdGuzzleHandler::class)]
 #[UsesClass(RequestIdService::class)]
+#[UsesClass(TraceParent::class)]
+#[UsesClass(TraceState::class)]
 final class RequestIdGuzzleHandlerTest extends TestCase
 {
     private MockHandler $transport;
@@ -75,5 +79,68 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler($client);
 
         self::assertNotInstanceOf(HandlerStack::class, $client->getConfig('handler'));
+    }
+
+    public function testSendsTheW3cTraceWithANewSpanPerRequest(): void
+    {
+        $storage = $this->continuedTrace();
+        new RequestIdGuzzleHandler($storage, $storage)->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com');
+        $first = TraceParent::fromHeader($this->transport->getLastRequest()?->getHeaderLine('traceparent') ?? '');
+        $state = $this->transport->getLastRequest()?->getHeaderLine('tracestate');
+        $this->client->request('GET', 'https://example.com');
+        $second = TraceParent::fromHeader($this->transport->getLastRequest()?->getHeaderLine('traceparent') ?? '');
+
+        self::assertInstanceOf(TraceParent::class, $first);
+        self::assertInstanceOf(TraceParent::class, $second);
+        self::assertSame('4bf92f3577b34da6a3ce929d0e0e4736', $first->traceId);
+        self::assertSame(0, $first->flags);
+        self::assertSame($first->traceId, $second->traceId);
+        self::assertNotSame($first->parentId, $second->parentId);
+        self::assertSame('rojo=1', $state);
+    }
+
+    public function testKeepsATraceParentTheCallerSet(): void
+    {
+        $storage = $this->continuedTrace();
+        new RequestIdGuzzleHandler($storage, $storage)->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com', ['headers' => ['traceparent' => 'mine']]);
+
+        $request = $this->transport->getLastRequest();
+        self::assertInstanceOf(RequestInterface::class, $request);
+        self::assertSame(['mine'], $request->getHeader('traceparent'));
+        self::assertFalse($request->hasHeader('tracestate'));
+    }
+
+    public function testKeepsATraceStateTheCallerSet(): void
+    {
+        $storage = $this->continuedTrace();
+        new RequestIdGuzzleHandler($storage, $storage)->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com', ['headers' => ['tracestate' => 'mine=1']]);
+
+        $request = $this->transport->getLastRequest();
+        self::assertInstanceOf(RequestInterface::class, $request);
+        self::assertSame(['mine=1'], $request->getHeader('tracestate'));
+        self::assertTrue($request->hasHeader('traceparent'));
+    }
+
+    public function testSendsNoW3cHeadersWhenDisabled(): void
+    {
+        new RequestIdGuzzleHandler($this->continuedTrace())->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com');
+
+        self::assertFalse($this->transport->getLastRequest()?->hasHeader('traceparent'));
+    }
+
+    private function continuedTrace(): RequestIdService
+    {
+        $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00');
+        self::assertInstanceOf(TraceParent::class, $received);
+
+        return new RequestIdService('shop', 'api')->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
     }
 }

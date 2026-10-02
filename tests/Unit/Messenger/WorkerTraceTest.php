@@ -8,8 +8,11 @@ use Closure;
 use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Stamp\RequestIdStamp;
+use Msstc4Symfony\TracingBundle\Messenger\Stamp\TraceContextStamp;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use Msstc4Symfony\TracingBundle\Storage\TraceContext;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
 use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\BatchedMessage;
 use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\BatchHandler;
 use Msstc4Symfony\TracingBundle\Test\Unit\Messenger\Fixture\SlowMessage;
@@ -38,6 +41,9 @@ use Symfony\Component\Messenger\Worker;
 #[UsesClass(RequestIdService::class)]
 #[UsesClass(RequestIdStamp::class)]
 #[UsesClass(TraceContext::class)]
+#[UsesClass(TraceContextStamp::class)]
+#[UsesClass(TraceParent::class)]
+#[UsesClass(TraceState::class)]
 final class WorkerTraceTest extends TestCase
 {
     private RequestIdService $storage;
@@ -114,6 +120,21 @@ final class WorkerTraceTest extends TestCase
         self::assertSame('console-run', $this->storage->getRequestId());
     }
 
+    public function testNextMessageDoesNotInheritTheW3cTrace(): void
+    {
+        $seen = [];
+        $this->consume(new MockClock(), [
+            new Envelope(new SlowMessage(), [new TraceContextStamp('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01', 'rojo=1')]),
+            new Envelope(new SlowMessage()),
+        ], [SlowMessage::class => [function () use (&$seen): void {
+            $seen[] = [$this->storage->getTraceParent()->traceId, $this->storage->getTraceState()?->value];
+        }]]);
+
+        self::assertSame(['4bf92f3577b34da6a3ce929d0e0e4736', 'rojo=1'], $seen[0] ?? null);
+        self::assertNotSame('4bf92f3577b34da6a3ce929d0e0e4736', $seen[1][0] ?? null);
+        self::assertNull($seen[1][1] ?? null);
+    }
+
     private function assertTraceNeverLeaks(string $requestId): void
     {
         foreach ($this->log as $entry) {
@@ -127,7 +148,7 @@ final class WorkerTraceTest extends TestCase
      */
     private function consume(MockClock $clock, array $envelopes, array $handlers, int $idleTicks = 1): void
     {
-        $incoming = new IncomingStampMiddleware($this->storage);
+        $incoming = new IncomingStampMiddleware($this->storage, $this->storage);
         $batch = new BatchHandler(function (string $event): void {
             $this->log[] = $event . ' ' . $this->storage->getRequestId() . ':';
         });

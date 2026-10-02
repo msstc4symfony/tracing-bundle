@@ -6,6 +6,8 @@ namespace Msstc4Symfony\TracingBundle\HttpClient;
 
 use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
+use Msstc4Symfony\TracingBundle\Storage\W3cTraceContextInterface;
 use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
 use Symfony\Component\HttpClient\DecoratorTrait;
@@ -25,6 +27,7 @@ final class HttpClientDecorator implements HttpClientInterface, ResetInterface
     public function __construct(
         HttpClientInterface $inner,
         private readonly RequestIdServiceInterface $requestIdService,
+        private readonly ?W3cTraceContextInterface $w3cTraceContext = null,
     ) {
         $this->client = $inner;
     }
@@ -51,6 +54,16 @@ final class HttpClientDecorator implements HttpClientInterface, ResetInterface
 
         if (!$this->hasHeader($headers, HTTPRequestListener::REQUEST_FROM_HEADER)) {
             $headers[HTTPRequestListener::REQUEST_FROM_HEADER] = $this->requestIdService->getCurrentRequestFrom();
+        }
+
+        if ($this->w3cTraceContext instanceof W3cTraceContextInterface && !$this->hasHeader($headers, HTTPRequestListener::TRACEPARENT_HEADER)) {
+            $headers[HTTPRequestListener::TRACEPARENT_HEADER] = $this->w3cTraceContext->createOutgoingTraceParent()->toHeader();
+
+            // tracestate belongs to the traceparent it came with; a caller-made traceparent keeps its own.
+            $state = $this->w3cTraceContext->getTraceState();
+            if ($state instanceof TraceState && !$this->hasHeader($headers, HTTPRequestListener::TRACESTATE_HEADER)) {
+                $headers[HTTPRequestListener::TRACESTATE_HEADER] = $state->value;
+            }
         }
 
         $options['headers'] = $headers;

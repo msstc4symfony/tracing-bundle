@@ -4,10 +4,10 @@
 
 | Слой | Что | Зависит от |
 |---|---|---|
-| `Storage` | `RequestIdService(Interface)` — контекст трассы | — |
+| `Storage` | `RequestIdService(Interface)`, `W3cTraceContextInterface`, `W3c\TraceParent`/`TraceState` — контекст трассы | — |
 | `EventListener` | вход HTTP/консоли; константы имён заголовков | `Storage` |
 | `Integrations` | `HttpClient`, `GuzzleHttp`, `Messenger`, `Monolog`, `Sentry` | `Storage`, `EventListener` |
-| `DependencyInjection` | `HttpClientPass`, `GuzzlePass` | `Storage`, `Integrations` |
+| `DependencyInjection` | `HttpClientPass`, `GuzzlePass`, `W3cTraceContextWiring` | `Storage`, `Integrations` |
 | корень | `TracingBundle` | `DependencyInjection` |
 
 ## Жизненный цикл контекста
@@ -35,3 +35,28 @@ Messenger (`IncomingStampMiddleware`, счётчик вложенности):
   `resolveValue()` + `getReflectionClass($class, false)`, без автозагрузки в фатал) ставит configurator `RequestIdGuzzleHandler::addHandler` каждому сервису с
   классом `GuzzleHttp\ClientInterface`, если configurator ещё не задан; клиент сохраняет тип.
 - Messenger-middleware **не** подключаются сами: их перечисляют в `buses.*.middleware`.
+
+## W3C Trace Context (с 1.1.0)
+
+- Конфиг: корень `msstc4symfony_tracing` (`$extensionAlias`; до 1.1 у бандла не было дерева
+  конфига, алиас был `tracing`), `w3c_trace_context: true|false|{enabled, messenger}`
+  (`canBeDisabled()` → по умолчанию включено; `messenger` по умолчанию `false`).
+- Состояние W3C живёт в том же `RequestIdService` (implements `W3cTraceContextInterface`): три
+  поля — `traceParent` (спан этой единицы работы: trace-id + **свой** span id в поле
+  `parentId` + flags; лениво `TraceParent::start()`), `remoteTraceParent` (как пришёл),
+  `traceState`. `resetRequestData()`/`reset()` чистят их, `snapshot()`/`restore()` несут их
+  через новые необязательные поля `TraceContext` → sync-сообщения и воркеры не требуют
+  отдельной логики.
+- Включение = алиас `W3cTraceContextInterface` → `RequestIdService` (`W3cTraceContextWiring`,
+  вызывается из `TracingBundle::loadExtension`; корню бандла deptrac запрещает зависеть от
+  `Storage`). Интеграции получают `?W3cTraceContextInterface $w3cTraceContext = null`
+  автовайрингом: нет алиаса → `null` → W3C пропускается. `HttpClientPass` ставит
+  `Reference(..., NULL_ON_INVALID_REFERENCE)`. При `messenger: false` у
+  `OutgoingStampMiddleware` аргумент явно `null`.
+- `W3cTraceContextPass` (до автовайринга): если класс сервиса `RequestIdServiceInterface`
+  реализует и `W3cTraceContextInterface`, алиас W3C → `RequestIdServiceInterface`.
+- `TraceState` хранит члены как пришли, но валидирует грамматику, дубликаты ключей, ≤ 32;
+  > 512 символов — усечение (сначала члены > 128 с конца, затем с конца). Флаги `TraceParent`
+  маскируются до `0x03` (sampled|random).
+- Исходящий `traceparent` = `getTraceParent()->child()`: новый span id на каждый запрос /
+  сообщение. Логи: `trace_id`, `span_id` (= свой span единицы работы).

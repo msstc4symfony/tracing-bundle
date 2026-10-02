@@ -13,10 +13,10 @@ every service it touches:
 
 | Channel | In | Out |
 |---|---|---|
-| HTTP | `request-id` / `request-from` request headers | same headers on the response and on every Symfony HttpClient / Guzzle request |
-| Messenger | `RequestIdStamp` on consumed messages | `RequestIdStamp` on dispatched messages |
-| Logs | — | `runtime_id`, `request_id`, `request_from` in every Monolog record's `extra` |
-| Sentry | — | the same keys in every event's `extra` (opt-in) |
+| HTTP | `request-id` / `request-from` request headers, W3C `traceparent` / `tracestate` | same headers on the response and on every Symfony HttpClient / Guzzle request; `traceparent` / `tracestate` on outgoing requests |
+| Messenger | `RequestIdStamp`, `TraceContextStamp` on consumed messages | `RequestIdStamp` on dispatched messages; `TraceContextStamp` (opt-in) |
+| Logs | — | `runtime_id`, `request_id`, `request_from` in every Monolog record's `extra`; `trace_id`, `span_id` with W3C on |
+| Sentry | — | `runtime_id`, `request_id`, `request_from` in every event's `extra` (opt-in) |
 
 ## Compatibility
 
@@ -61,6 +61,55 @@ COMPONENT_NAME=api
   Messenger) never carry an id into the next unit of work.
 
 Headers already set by the caller are never overwritten (`request-id` and `request-from` independently).
+
+## W3C Trace Context (OpenTelemetry interop)
+
+On by default since 1.1. It only adds headers and log keys; `request-id` handling is unchanged.
+Configuration: [doc/w3c_trace_context.yaml](doc/w3c_trace_context.yaml); switch it off with
+`msstc4symfony_tracing: { w3c_trace_context: false }`.
+
+Incoming request (main requests only):
+
+* a valid [`traceparent`](https://www.w3.org/TR/trace-context/#traceparent-header) is kept:
+  trace id, parent span id, flags (sampled and random; reserved bits are cleared, as the spec
+  says for version `00`). This request gets its own span id;
+* an invalid one is ignored, as the spec says: unknown format, upper-case hex, version `ff`,
+  version `00` with extra fields, all-zero trace or parent id, the header sent twice. Its
+  `tracestate` is ignored with it. Higher versions are read by their first four fields and
+  forwarded as version `00`;
+* `tracestate` entries are forwarded unchanged (repeated headers joined with `,`, blank entries
+  and surrounding spaces removed). The whole header is ignored when an entry breaks the spec's
+  `key=value` grammar, a key repeats or there are more than 32 entries. Above 512 characters
+  entries are dropped as the spec suggests: those over 128 characters first, then from the end;
+* no `request-id` but a valid `traceparent`: the request id becomes the trace id in UUID
+  layout (`4bf92f3577b34da6a3ce929d0e0e4736` → `4bf92f35-77b3-4da6-a3ce-929d0e0e4736`; its
+  version/variant bits are arbitrary, so a strict UUIDv4 validator rejects it), and
+  `request-from` is the header or `unknown`. An OpenTelemetry caller's trace then shares its id
+  with this bundle's request id. With a `request-id` header both ids are kept as received.
+
+Outgoing (Symfony HttpClient, Guzzle, Messenger when `messenger: true`): `traceparent` with the
+same trace id and flags and a new span id for every request or message, plus the received
+`tracestate`. Without an incoming trace the unit starts one: random 16-byte trace id, 8-byte
+span id, flags `01`. A `traceparent` set by the caller is kept, and so is a `tracestate` set by
+the caller, even next to the bundle's own `traceparent` (dropping either would lose data the
+caller chose to send). No `traceresponse` header is sent.
+
+Both headers, including a `tracestate` received from outside, go to every host the clients
+call, third-party APIs included (see the spec's
+[privacy section](https://www.w3.org/TR/trace-context/#privacy-considerations)). Set
+`traceparent` / `tracestate` yourself on a request to override them, or switch W3C off.
+
+A sync (`sync://`) message runs as a child span of the dispatching unit even without a
+stamp. A custom `RequestIdServiceInterface` gets W3C only if it also implements
+`W3cTraceContextInterface`; otherwise the W3C state stays on the bundle's own storage and is
+reset only by `kernel.reset`.
+
+Messages are not stamped by default: a consumer running tracing-bundle 1.0 (or no tracing
+bundle) cannot decode a message with an unknown stamp class, and both Messenger serializers
+fail on it. Consumers on 1.1 read `TraceContextStamp` whatever the setting.
+
+Long-running workers reset the W3C context with the rest of the trace: every main request,
+consumed message and `kernel.reset` starts clean.
 
 ## Opt-in integrations
 
