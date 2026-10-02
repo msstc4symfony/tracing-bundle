@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
-final readonly class HTTPRequestListener implements EventSubscriberInterface
+final class HTTPRequestListener implements EventSubscriberInterface
 {
     public const string REQUEST_ID_HEADER = 'request-id';
 
@@ -25,9 +25,12 @@ final readonly class HTTPRequestListener implements EventSubscriberInterface
 
     public const string TRACESTATE_HEADER = 'tracestate';
 
+    /** Runtime id the previous main request ran under, to tell its leftovers from this request's own early ids. */
+    private ?string $previousRuntimeId = null;
+
     public function __construct(
-        private RequestIdServiceInterface $requestIdService,
-        private ?W3cTraceContextInterface $w3cTraceContext = null,
+        private readonly RequestIdServiceInterface $requestIdService,
+        private readonly ?W3cTraceContextInterface $w3cTraceContext = null,
     ) {
     }
 
@@ -35,7 +38,8 @@ final readonly class HTTPRequestListener implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            KernelEvents::REQUEST => ['onRequest', 100],
+            // Ahead of FrameworkBundle's request listeners (ValidateRequestListener is 256), so their logs carry the incoming trace.
+            KernelEvents::REQUEST => ['onRequest', 2048],
             KernelEvents::RESPONSE => ['onResponse', 100],
         ];
     }
@@ -47,7 +51,12 @@ final readonly class HTTPRequestListener implements EventSubscriberInterface
             return;
         }
 
-        $this->requestIdService->reset();
+        // A unit that kernel.reset (or a fresh process) already opened may have logged before this
+        // listener; resetting again would strand those records under ids this request never uses.
+        if ($this->requestIdService->getRuntimeId() === $this->previousRuntimeId) {
+            $this->requestIdService->reset();
+        }
+        $this->previousRuntimeId = $this->requestIdService->getRuntimeId();
 
         $headers = $event->getRequest()->headers;
         $traceParent = $this->continueW3cTrace($headers);

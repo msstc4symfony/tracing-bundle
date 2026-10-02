@@ -51,11 +51,24 @@ COMPONENT_NAME=api
 ## What is wired automatically
 
 * HTTP requests and console commands start a new trace (sub-requests keep the main one).
+  Records logged before the request listener (kernel boot, request listeners above priority
+  2048) keep their ids: the listener resets the trace only when it still holds the previous main
+  request's (the kernel's `kernel.reset` or a fresh PHP process already opened a new one). An
+  incoming `request-id` / `traceparent` replaces the request and trace id from that point on;
+  the runtime id stays.
 * Symfony HttpClient: every framework client, default and scoped, sends the trace headers
   (the shared `http_client.transport` is decorated). Clients created outside FrameworkBundle
   are not covered.
-* Guzzle: every container service whose class implements `GuzzleHttp\ClientInterface` gets a
-  handler-stack middleware, unless the service already has a configurator.
+* Guzzle 7 and 8: every container service whose class implements `GuzzleHttp\ClientInterface`
+  gets a handler-stack middleware and keeps its own configurator:
+  * a client created by `GuzzleHttp\Client::__construct()` gets it in its `handler` config (its
+    own `HandlerStack`, or Guzzle's default stack); a bare callable `handler` is left as is;
+  * a client built by a factory or with its own constructor gets it after creation through
+    `getConfig('handler')` (every client on Guzzle 7, `GuzzleHttp\Client` on Guzzle 8);
+  * any other Guzzle 8 client cannot be reached and is named in the container compiler log
+    (`var/cache/<env>/*Compiler.log`, debug mode); create it with the handler from
+    `RequestIdGuzzleHandler::decorateHandler()`, or push `RequestIdGuzzleHandler::middleware()`
+    onto its stack yourself.
 * Monolog: the processor is registered for all channels.
 * The context is reset on `kernel.reset`, so long-running workers (RoadRunner, FrankenPHP,
   Messenger) never carry an id into the next unit of work.

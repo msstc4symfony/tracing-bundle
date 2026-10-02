@@ -4,16 +4,30 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\DependencyInjection\Compiler;
 
+use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
+use GuzzleHttp\HandlerStack;
+use Msstc4Symfony\TracingBundle\GuzzleHttp\ChainedClientConfigurator;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Override;
 use ReflectionClass;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 
+/**
+ * Traces every Guzzle client service. A client constructed by `GuzzleHttp\Client::__construct()`
+ * gets the middleware in its `handler` config, which works on Guzzle 7 and 8 and leaves any
+ * configurator of the application alone. Other clients (built by a factory, with their own
+ * constructor or with a config resolved only at run time) are configured after creation through
+ * `getConfig()`; without it they cannot be
+ * reached and are only reported in the container compilation log.
+ */
 final class GuzzlePass implements CompilerPassInterface
 {
+    private const array CONFIG_ARGUMENTS = [0, '$config'];
+
     #[Override]
     public function process(ContainerBuilder $container): void
     {
@@ -21,9 +35,10 @@ final class GuzzlePass implements CompilerPassInterface
             return;
         }
 
-        foreach ($container->getDefinitions() as $definition) {
-            // An existing configurator is the application's; do not replace it.
-            if ($definition->isAbstract() || $definition->getConfigurator() !== null) {
+        $tracing = new Reference(RequestIdGuzzleHandler::class);
+
+        foreach ($container->getDefinitions() as $id => $definition) {
+            if ($definition->isAbstract()) {
                 continue;
             }
 
@@ -34,7 +49,46 @@ final class GuzzlePass implements CompilerPassInterface
                 continue;
             }
 
-            $definition->setConfigurator([new Reference(RequestIdGuzzleHandler::class), 'addHandler']);
+            if ($this->traceThroughConfig($definition, $reflection, $tracing)) {
+                continue;
+            }
+
+            if (!$reflection->hasMethod('getConfig')) {
+                $container->log($this, sprintf('Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); create it with the handler returned by %s::decorateHandler().', $id, Client::class, RequestIdGuzzleHandler::class));
+
+                continue;
+            }
+
+            $configurator = $definition->getConfigurator();
+            $definition->setConfigurator($configurator === null
+                ? [$tracing, 'addHandler']
+                : [new Definition(ChainedClientConfigurator::class, [$configurator, $tracing]), '__invoke']);
         }
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     */
+    private function traceThroughConfig(Definition $definition, ReflectionClass $reflection, Reference $tracing): bool
+    {
+        if ($definition->getFactory() !== null || $reflection->getConstructor()?->getDeclaringClass()->getName() !== Client::class) {
+            return false;
+        }
+
+        $arguments = $definition->getArguments();
+        $key = array_find(self::CONFIG_ARGUMENTS, static fn (int|string $key): bool => array_key_exists($key, $arguments)) ?? 0;
+        $config = $arguments[$key] ?? [];
+
+        // A parameter or expression is resolved only later; its content cannot be extended here.
+        if (!is_array($config)) {
+            return false;
+        }
+
+        $config['handler'] = new Definition(HandlerStack::class, [$config['handler'] ?? null])
+            ->setFactory([$tracing, 'decorateHandler'])
+        ;
+        $definition->setArgument($key, $config);
+
+        return true;
     }
 }

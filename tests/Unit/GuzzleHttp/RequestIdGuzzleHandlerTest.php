@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Unit\GuzzleHttp;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use LogicException;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
+use Msstc4Symfony\TracingBundle\Test\Unit\GuzzleHttp\Fixture\ClientWithoutConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -79,6 +82,66 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler($client);
 
         self::assertNotInstanceOf(HandlerStack::class, $client->getConfig('handler'));
+    }
+
+    public function testDecoratesTheGivenHandlerStack(): void
+    {
+        $stack = HandlerStack::create($this->transport);
+
+        $decorated = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->decorateHandler($stack);
+        new Client(['handler' => $decorated])->request('GET', 'https://example.com');
+
+        self::assertSame($stack, $decorated);
+        self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
+    }
+
+    public function testDecoratesTheGivenHandlerStackOnce(): void
+    {
+        $handler = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $stack = HandlerStack::create($this->transport);
+        $handler->decorateHandler($handler->decorateHandler($stack));
+
+        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+
+        self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
+    }
+
+    public function testCreatesTheDefaultStackWhenNoHandlerIsGiven(): void
+    {
+        $stack = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->decorateHandler();
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        $stack->setHandler($this->transport);
+
+        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+
+        self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
+    }
+
+    public function testLeavesABareHandlerUnchanged(): void
+    {
+        self::assertSame($this->transport, new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->decorateHandler($this->transport));
+    }
+
+    public function testMiddlewareCanBePushedOntoAnyStack(): void
+    {
+        $stack = HandlerStack::create($this->transport);
+        $stack->push(new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->middleware());
+
+        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+
+        self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
+    }
+
+    public function testRefusesAClientWithoutGetConfig(): void
+    {
+        if (method_exists(ClientInterface::class, 'getConfig')) {
+            self::markTestSkipped('Guzzle 7 clients always have getConfig()');
+        }
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('decorateHandler()');
+
+        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler(new ClientWithoutConfig());
     }
 
     public function testSendsTheW3cTraceWithANewSpanPerRequest(): void

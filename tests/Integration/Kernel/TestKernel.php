@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Integration\Kernel;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
 use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
@@ -32,6 +33,14 @@ final class TestKernel extends Kernel
     public const string GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
 
     public const string GUZZLE_CONSUMER = 'test.guzzle.consumer';
+
+    public const string GUZZLE_CONFIGURED_CLIENT = 'test.guzzle.configured';
+
+    public const string GUZZLE_STACK_CLIENT = 'test.guzzle.with_stack';
+
+    public const string GUZZLE_FACTORY_CLIENT = 'test.guzzle.factory';
+
+    public const string GUZZLE_FACTORY_CONFIGURED_CLIENT = 'test.guzzle.factory_configured';
 
     public const string SENTRY_INTEGRATION = 'test.sentry.integration';
 
@@ -167,6 +176,10 @@ final class TestKernel extends Kernel
                 'handlers' => ['main' => ['type' => 'test']],
             ]);
             $services->alias('test.logger', 'logger')->public();
+            $services->set(EarlyLogListener::class)
+                ->args([new Reference('logger')])
+                ->tag('kernel.event_listener', ['event' => 'kernel.request', 'priority' => 100_000])
+            ;
         } else {
             // FrameworkBundle's fallback logger writes debug records to stderr.
             $services->set('logger', NullLogger::class);
@@ -185,6 +198,26 @@ final class TestKernel extends Kernel
             $services->set('test.guzzle.inlined', Client::class);
             $services->set(self::GUZZLE_CONSUMER, GuzzleConsumer::class)
                 ->args([new Reference('test.guzzle.inlined')])
+                ->public()
+            ;
+            $services->set(AppGuzzleConfigurator::class)->public();
+            $services->set(self::GUZZLE_CONFIGURED_CLIENT, Client::class)
+                ->configurator([new Reference(AppGuzzleConfigurator::class), 'configure'])
+                ->public()
+            ;
+            $services->set('test.guzzle.stack', HandlerStack::class)->factory(HandlerStack::class . '::create');
+            $services->alias('test.guzzle.stack.public', 'test.guzzle.stack')->public();
+            $services->set(self::GUZZLE_STACK_CLIENT, Client::class)
+                ->args([['handler' => new Reference('test.guzzle.stack'), 'timeout' => 3]])
+                ->public()
+            ;
+            $services->set(self::GUZZLE_FACTORY_CLIENT, Client::class)
+                ->factory(GuzzleClientFactory::class . '::create')
+                ->public()
+            ;
+            $services->set(self::GUZZLE_FACTORY_CONFIGURED_CLIENT, Client::class)
+                ->factory(GuzzleClientFactory::class . '::create')
+                ->configurator([new Reference(AppGuzzleConfigurator::class), 'configure'])
                 ->public()
             ;
         }

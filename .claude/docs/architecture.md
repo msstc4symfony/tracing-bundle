@@ -1,6 +1,6 @@
 # Архитектура
 
-## Слои (`deptrac.yaml`, статус-кво этапа A)
+## Слои (`deptrac.yaml`)
 
 | Слой | Что | Зависит от |
 |---|---|---|
@@ -13,8 +13,16 @@
 ## Жизненный цикл контекста
 
 `reset()` = новый runtime id + забыть request id/from. Вызывается: `kernel.reset`,
-главный HTTP-запрос, консольная команда, перед сообщением, полученным воркером,
-и при закрытии unit воркера (`WorkerTraceSubscriber`). Request id генерируется лениво.
+главный HTTP-запрос (с 1.3 — условно, см. ниже), консольная команда, перед сообщением,
+полученным воркером, и при закрытии unit воркера (`WorkerTraceSubscriber`). Request id
+генерируется лениво.
+
+HTTP (`HTTPRequestListener`, `kernel.request` priority 2048 с 1.3, раньше 100): слушатель
+помнит runtime id, под которым начался предыдущий главный запрос (`$previousRuntimeId`), и
+делает `reset()`, только если хранилище всё ещё в нём. Иначе контекст уже открыт заново
+(`services_resetter` в `Kernel::boot()` перед 2-м и следующими `handle()`, свежий процесс FPM) и
+записи, залогированные до слушателя, сохраняют runtime/request/trace id. Заголовки
+`request-id`/`traceparent` перекрывают request id и trace id, runtime id остаётся.
 
 Messenger (`IncomingStampMiddleware`, счётчик вложенности):
 - сообщение верхнего уровня воркера (`ReceivedStamp`, вложенность 0) — сброс + трасса
@@ -32,8 +40,19 @@ Messenger (`IncomingStampMiddleware`, счётчик вложенности):
 - `HttpClientPass` декорирует только `http_client.transport`, приоритет -15: снаружи мока
   `mock_response_factory` (-10). metrics-bundle сидит на -20 (ещё снаружи).
 - `GuzzlePass` (`TYPE_BEFORE_REMOVING` — после разрешения `parent:`; класс через
-  `resolveValue()` + `getReflectionClass($class, false)`, без автозагрузки в фатал) ставит configurator `RequestIdGuzzleHandler::addHandler` каждому сервису с
-  классом `GuzzleHttp\ClientInterface`, если configurator ещё не задан; клиент сохраняет тип.
+  `getReflectionClass($class, false)`, без автозагрузки в фатал), для каждого не-абстрактного
+  сервиса с классом `GuzzleHttp\ClientInterface` (1.3+, Guzzle 7 и 8):
+  1. без factory и конструктор объявлен в `GuzzleHttp\Client` → в аргумент `0`/`$config`
+     (массив) кладётся `handler` = inline-`Definition(HandlerStack)` с factory
+     `[RequestIdGuzzleHandler, 'decorateHandler']` и аргументом — прежний `handler` или `null`.
+     Configurator приложения не трогается;
+  2. иначе, если у класса есть `getConfig()` → configurator `addHandler`, а при уже заданном —
+     inline `ChainedClientConfigurator(свой, RequestIdGuzzleHandler)` (`@internal`): сначала свой;
+  3. иначе (Guzzle 8, свой `ClientInterface` без `getConfig()`) — `$container->log()`, клиент не
+     трассируется.
+  `decorateHandler()`: `HandlerStack` → remove+push middleware (идемпотентно, тот же объект),
+  `null` → `HandlerStack::create()` + middleware, голый callable → без изменений (как в 1.0–1.2:
+  `getConfig('handler')` должен вернуть то, что дали, например `MockHandler` для `append()`).
 - Messenger-middleware **не** подключаются сами: их перечисляют в `buses.*.middleware`.
 
 ## W3C Trace Context (с 1.1.0)

@@ -33,6 +33,7 @@
     "symfony/console": "^6.4|^7.0|^8.0",
     "symfony/event-dispatcher": "^6.4|^7.0|^8.0",
     "symfony/framework-bundle": "^6.4|^7.0|^8.0",
+    "symfony/service-contracts": "^2.5|^3",
     "symfony/uid": "^6.4|^7.0|^8.0"
   },
   "require-dev": {

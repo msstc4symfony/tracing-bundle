@@ -1,5 +1,5 @@
 parameters:
-    level: 9
+    level: 10
     editorUrl: 'phpstorm://open?file=%%file%%&line=%%line%%'
     treatPhpDocTypesAsCertain: false
     phpVersion: 80400

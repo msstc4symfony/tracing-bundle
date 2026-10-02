@@ -8,10 +8,13 @@ use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
 use IteratorAggregate;
 use Monolog\Handler\TestHandler;
-use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
+use Monolog\LogRecord;
 use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\AppGuzzleConfigurator;
+use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\EarlyLogListener;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\GuzzleConsumer;
+use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingGuzzleTransport;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TestKernel;
 use Override;
@@ -97,6 +100,27 @@ final class ContainerCompileTest extends KernelTestCase
         self::assertSame('abc', $handler->getRecords()[0]->extra['request_id'] ?? null);
     }
 
+    public function testLogsBeforeTheTracingListenerShareTheRequestTrace(): void
+    {
+        $this->skipUnless(TestKernel::hasMonologBundle(), 'symfony/monolog-bundle');
+
+        $kernel = self::bootKernel();
+
+        $response = $kernel->handle(Request::create('/ping'));
+
+        $handler = self::getContainer()->get('monolog.handler.main');
+        self::assertInstanceOf(TestHandler::class, $handler);
+        $records = $handler->getRecords();
+        $early = array_find($records, static fn (LogRecord $record): bool => $record->message === EarlyLogListener::MESSAGE);
+        self::assertInstanceOf(LogRecord::class, $early);
+        self::assertSame($response->headers->get('request-id'), $early->extra['request_id'] ?? null);
+        $last = $records[array_key_last($records)];
+        self::assertNotSame($early, $last);
+        foreach (['runtime_id', 'request_id', 'trace_id'] as $key) {
+            self::assertSame($last->extra[$key] ?? null, $early->extra[$key] ?? null, $key);
+        }
+    }
+
     public function testKernelResetForgetsTheTrace(): void
     {
         self::bootKernel();
@@ -111,31 +135,57 @@ final class ContainerCompileTest extends KernelTestCase
 
     #[TestWith([TestKernel::GUZZLE_CLIENT])]
     #[TestWith([TestKernel::GUZZLE_CHILD_CLIENT])]
-    public function testGuzzleClientsGetTheTracingMiddleware(string $id): void
+    #[TestWith([TestKernel::GUZZLE_CONFIGURED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_STACK_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_FACTORY_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_FACTORY_CONFIGURED_CLIENT])]
+    public function testGuzzleClientsSendTheTrace(string $id): void
     {
         $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
 
         self::bootKernel();
-
         $client = self::getContainer()->get($id);
         self::assertInstanceOf(Client::class, $client);
-        $stack = $client->getConfig('handler');
-        self::assertInstanceOf(HandlerStack::class, $stack);
-        self::assertStringContainsString(RequestIdGuzzleHandler::MIDDLEWARE_NAME, (string) $stack);
+
+        $this->assertSendsTheTrace($client);
     }
 
-    public function testInlinedGuzzleClientKeepsTheTracingMiddleware(): void
+    public function testInlinedGuzzleClientSendsTheTrace(): void
     {
         $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
 
         self::bootKernel();
-
         $consumer = self::getContainer()->get(TestKernel::GUZZLE_CONSUMER);
         self::assertInstanceOf(GuzzleConsumer::class, $consumer);
         self::assertInstanceOf(Client::class, $consumer->client);
-        $stack = $consumer->client->getConfig('handler');
-        self::assertInstanceOf(HandlerStack::class, $stack);
-        self::assertStringContainsString(RequestIdGuzzleHandler::MIDDLEWARE_NAME, (string) $stack);
+
+        $this->assertSendsTheTrace($consumer->client);
+    }
+
+    #[TestWith([TestKernel::GUZZLE_CONFIGURED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_FACTORY_CONFIGURED_CLIENT])]
+    public function testGuzzleClientsKeepTheirOwnConfigurator(string $id): void
+    {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+
+        self::bootKernel();
+        $client = self::getContainer()->get($id);
+
+        $configurator = self::getContainer()->get(AppGuzzleConfigurator::class);
+        self::assertInstanceOf(AppGuzzleConfigurator::class, $configurator);
+        self::assertSame([$client], $configurator->configured);
+    }
+
+    public function testGuzzleClientKeepsItsOwnConfig(): void
+    {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+
+        self::bootKernel();
+        $client = self::getContainer()->get(TestKernel::GUZZLE_STACK_CLIENT);
+        self::assertInstanceOf(Client::class, $client);
+
+        self::assertSame(3, $client->getConfig('timeout'));
+        self::assertSame(self::getContainer()->get('test.guzzle.stack.public'), $client->getConfig('handler'));
     }
 
     public function testWorkerSubscriberSharesTheMiddlewareOfEveryBus(): void
@@ -187,6 +237,20 @@ final class ContainerCompileTest extends KernelTestCase
         }
 
         return $middleware;
+    }
+
+    // Swaps the transport under the client's stack, so the request goes through every middleware.
+    private function assertSendsTheTrace(Client $client): void
+    {
+        $stack = $client->getConfig('handler');
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        $transport = new RecordingGuzzleTransport();
+        $stack->setHandler($transport);
+        $this->storage()->setRequestId('abc');
+
+        $client->request('GET', 'http://example.test/');
+
+        self::assertSame(['abc'], $transport->lastRequest?->getHeader('request-id'));
     }
 
     private function storage(): RequestIdServiceInterface

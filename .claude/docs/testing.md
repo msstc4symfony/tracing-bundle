@@ -9,7 +9,10 @@
 - `tests/Integration/ContainerCompileTest` — ядро Framework + Tracing + установленные опциональные
   пакеты (см. known-issues: job без опциональных библиотек): заголовки
   входа/выхода, исходящий `http_client` (через `mock_response_factory` с записью
-  заголовков), `extra` в логах (`monolog` handler `test`), `services_resetter`, Guzzle.
+  заголовков), `extra` в логах (`monolog` handler `test`), `services_resetter`, Guzzle
+  (клиенты: простой, `parent:`, инлайновый, со своим configurator, со своим `HandlerStack` в
+  конфиге, из factory, из factory + configurator; проверка — реальный запрос через
+  `RecordingGuzzleTransport`), ранние логи (`EarlyLogListener`).
 - Каталог кеша ядра — на процесс (`getmypid()`): infection параллелит PHPUnit.
 - Моки без ожиданий дают notice — `createStub()`.
 - Messenger: `MessageBusTraceTest` (настоящая шина, sync/deferred), `WorkerTraceTest`

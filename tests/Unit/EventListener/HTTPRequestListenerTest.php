@@ -17,6 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Component\HttpKernel\KernelEvents;
 
 #[CoversClass(HTTPRequestListener::class)]
 #[UsesClass(RequestIdService::class)]
@@ -53,11 +54,58 @@ final class HTTPRequestListenerTest extends TestCase
 
     public function testStartsAFreshTraceWithoutHeaders(): void
     {
-        $this->storage->setRequestId('left-over-from-previous-request');
+        $this->listener->onRequest($this->requestEvent(['HTTP_REQUEST_ID' => 'previous-request']));
+        $runtimeId = $this->storage->getRuntimeId();
 
         $this->listener->onRequest($this->requestEvent([]));
 
-        self::assertNotSame('left-over-from-previous-request', $this->storage->getRequestId());
+        self::assertNotSame('previous-request', $this->storage->getRequestId());
+        self::assertNotSame($runtimeId, $this->storage->getRuntimeId());
+    }
+
+    public function testKeepsTheIdsLoggedBeforeTheListener(): void
+    {
+        $runtimeId = $this->storage->getRuntimeId();
+        $requestId = $this->storage->getRequestId();
+        $traceId = $this->storage->getTraceParent()->traceId;
+
+        $this->listener->onRequest($this->requestEvent([]));
+
+        self::assertSame($runtimeId, $this->storage->getRuntimeId());
+        self::assertSame($requestId, $this->storage->getRequestId());
+        self::assertSame($traceId, $this->storage->getTraceParent()->traceId);
+    }
+
+    public function testKeepsTheEarlyRuntimeIdWhenTheCallerSendsItsTrace(): void
+    {
+        $runtimeId = $this->storage->getRuntimeId();
+        $this->storage->getRequestId();
+
+        $this->listener->onRequest($this->requestEvent(['HTTP_REQUEST_ID' => 'abc', 'HTTP_TRACEPARENT' => self::TRACE_PARENT]));
+
+        self::assertSame($runtimeId, $this->storage->getRuntimeId());
+        self::assertSame('abc', $this->storage->getRequestId());
+        self::assertSame('4bf92f3577b34da6a3ce929d0e0e4736', $this->storage->getTraceParent()->traceId);
+    }
+
+    public function testKeepsTheEarlyIdsAfterAKernelReset(): void
+    {
+        $this->listener->onRequest($this->requestEvent(['HTTP_REQUEST_ID' => 'previous-request']));
+        $this->storage->reset();
+        $requestId = $this->storage->getRequestId();
+
+        $this->listener->onRequest($this->requestEvent([]));
+
+        self::assertSame($requestId, $this->storage->getRequestId());
+    }
+
+    public function testRunsBeforeTheFrameworkRequestListeners(): void
+    {
+        $request = HTTPRequestListener::getSubscribedEvents()[KernelEvents::REQUEST];
+        self::assertIsArray($request);
+
+        // ValidateRequestListener (256) is the highest FrameworkBundle request listener.
+        self::assertGreaterThan(256, $request[1]);
     }
 
     public function testSubRequestKeepsTheMainTrace(): void

@@ -8,6 +8,7 @@ use Closure;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Promise\PromiseInterface;
+use LogicException;
 use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
 use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
@@ -15,8 +16,13 @@ use Msstc4Symfony\TracingBundle\Storage\W3cTraceContextInterface;
 use Psr\Http\Message\RequestInterface;
 
 /**
- * Service configurator for Guzzle clients: pushes a middleware adding the trace headers onto
- * the client's own handler stack, so the client keeps its concrete type for autowiring.
+ * Adds the trace headers to Guzzle requests through a handler-stack middleware.
+ *
+ * `GuzzlePass` wires it into container clients: through the client's `handler` config
+ * (`decorateHandler()`), or, for clients it cannot build itself, as a service configurator
+ * (`addHandler()`). Either way the client keeps its concrete type for autowiring.
+ *
+ * @phpstan-type GuzzleHandler callable(RequestInterface, array<array-key, mixed>): PromiseInterface
  */
 final readonly class RequestIdGuzzleHandler
 {
@@ -28,46 +34,89 @@ final readonly class RequestIdGuzzleHandler
     ) {
     }
 
-    public function addHandler(ClientInterface $client): void
+    /**
+     * Returns the handler a client should be created with: the given stack (or Guzzle's default
+     * one) with the tracing middleware. A bare handler is returned unchanged, so a client built
+     * on it still exposes the handler it was given.
+     *
+     * @param GuzzleHandler|null $handler
+     *
+     * @return GuzzleHandler
+     */
+    public function decorateHandler(?callable $handler = null): callable
     {
-        $stack = $client->getConfig('handler');
-
-        // A client built with a bare callable handler has no stack to extend.
-        if (!$stack instanceof HandlerStack) {
-            return;
+        if ($handler !== null && !$handler instanceof HandlerStack) {
+            return $handler;
         }
 
+        $stack = $handler ?? HandlerStack::create();
         $stack->remove(self::MIDDLEWARE_NAME);
         $stack->push($this->middleware(), self::MIDDLEWARE_NAME);
+
+        return $stack;
     }
 
     /**
-     * @return Closure(callable(RequestInterface, array<mixed>): PromiseInterface): (Closure(RequestInterface, array<mixed>): PromiseInterface)
+     * Service configurator for clients that expose their handler through `getConfig()` (every
+     * Guzzle 7 client, `GuzzleHttp\Client` on Guzzle 8).
+     *
+     * @throws LogicException when the client has no `getConfig()` (a Guzzle 8 `ClientInterface`)
      */
-    private function middleware(): Closure
+    public function addHandler(ClientInterface $client): void
     {
-        $requestIdService = $this->requestIdService;
-        $w3cTraceContext = $this->w3cTraceContext;
+        if (!method_exists($client, 'getConfig')) {
+            throw new LogicException(sprintf('%s has no getConfig(): create it with the handler returned by %s::decorateHandler().', $client::class, self::class));
+        }
 
-        return static fn (callable $handler): Closure => static function (RequestInterface $request, array $options) use ($handler, $requestIdService, $w3cTraceContext): PromiseInterface {
-            if (!$request->hasHeader(HTTPRequestListener::REQUEST_ID_HEADER)) {
-                $request = $request->withHeader(HTTPRequestListener::REQUEST_ID_HEADER, $requestIdService->getRequestId());
-            }
+        $stack = $client->getConfig('handler');
 
-            if (!$request->hasHeader(HTTPRequestListener::REQUEST_FROM_HEADER)) {
-                $request = $request->withHeader(HTTPRequestListener::REQUEST_FROM_HEADER, $requestIdService->getCurrentRequestFrom());
-            }
+        // A client built with a bare callable handler has no stack to extend.
+        if ($stack instanceof HandlerStack) {
+            $this->decorateHandler($stack);
+        }
+    }
 
-            if ($w3cTraceContext instanceof W3cTraceContextInterface && !$request->hasHeader(HTTPRequestListener::TRACEPARENT_HEADER)) {
-                $request = $request->withHeader(HTTPRequestListener::TRACEPARENT_HEADER, $w3cTraceContext->createOutgoingTraceParent()->toHeader());
+    /**
+     * The middleware itself, for stacks built by hand: `$stack->push($handler->middleware())`.
+     *
+     * @return Closure(GuzzleHandler): (Closure(RequestInterface, array<array-key, mixed>): PromiseInterface)
+     */
+    public function middleware(): Closure
+    {
+        return $this->wrap(...);
+    }
 
-                $state = $w3cTraceContext->getTraceState();
-                if ($state instanceof TraceState && !$request->hasHeader(HTTPRequestListener::TRACESTATE_HEADER)) {
-                    $request = $request->withHeader(HTTPRequestListener::TRACESTATE_HEADER, $state->value);
-                }
-            }
+    /**
+     * @param GuzzleHandler $handler
+     *
+     * @return Closure(RequestInterface, array<array-key, mixed>): PromiseInterface
+     */
+    private function wrap(callable $handler): Closure
+    {
+        return fn (RequestInterface $request, array $options): PromiseInterface => $handler($this->withTraceHeaders($request), $options);
+    }
 
-            return $handler($request, $options);
-        };
+    private function withTraceHeaders(RequestInterface $request): RequestInterface
+    {
+        if (!$request->hasHeader(HTTPRequestListener::REQUEST_ID_HEADER)) {
+            $request = $request->withHeader(HTTPRequestListener::REQUEST_ID_HEADER, $this->requestIdService->getRequestId());
+        }
+
+        if (!$request->hasHeader(HTTPRequestListener::REQUEST_FROM_HEADER)) {
+            $request = $request->withHeader(HTTPRequestListener::REQUEST_FROM_HEADER, $this->requestIdService->getCurrentRequestFrom());
+        }
+
+        if (!$this->w3cTraceContext instanceof W3cTraceContextInterface || $request->hasHeader(HTTPRequestListener::TRACEPARENT_HEADER)) {
+            return $request;
+        }
+
+        $request = $request->withHeader(HTTPRequestListener::TRACEPARENT_HEADER, $this->w3cTraceContext->createOutgoingTraceParent()->toHeader());
+
+        $state = $this->w3cTraceContext->getTraceState();
+        if ($state instanceof TraceState && !$request->hasHeader(HTTPRequestListener::TRACESTATE_HEADER)) {
+            return $request->withHeader(HTTPRequestListener::TRACESTATE_HEADER, $state->value);
+        }
+
+        return $request;
     }
 }

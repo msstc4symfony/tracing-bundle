@@ -33,12 +33,13 @@
     "symfony/console": "^6.4|^7.0|^8.0",
     "symfony/event-dispatcher": "^6.4|^7.0|^8.0",
     "symfony/framework-bundle": "^6.4|^7.0|^8.0",
+    "symfony/service-contracts": "^2.5|^3",
     "symfony/uid": "^6.4|^7.0|^8.0"
   },
   "require-dev": {
     "deptrac/deptrac": "^4.6",
     "friendsofphp/php-cs-fixer": "^3.55",
-    "guzzlehttp/guzzle": "^7.8",
+    "guzzlehttp/guzzle": "^7.8|^8.0",
     "infection/infection": "^0.32",
     "phpstan/extension-installer": "^1.4",
     "phpstan/phpstan": "^2.1",
@@ -70,6 +71,7 @@
     "sort-packages": true
   },
   "conflict": {
+    "symfony/error-handler": "<6.4.44 || >=7.0,<7.4.17 || >=8.0,<8.1.5",
     "symfony/symfony": "*"
   },
   "extra": {

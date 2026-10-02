@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0
+
+- Guzzle 8 support (Guzzle 7 keeps working). `GuzzleHttp\ClientInterface::getConfig()` is gone in 8,
+  so `GuzzlePass` now puts the middleware into the `handler` config of every client created by
+  `GuzzleHttp\Client::__construct()`. Clients built by a factory or with their own constructor are
+  still configured through `getConfig()`; a Guzzle 8 client without it is named in the container
+  compiler log instead of failing.
+- Guzzle clients with their own service configurator are traced too; their configurator is kept
+  (and, for factory-built clients, run before the tracing one).
+- New API: `RequestIdGuzzleHandler::decorateHandler()` (the handler to create a client with) and
+  the now public `RequestIdGuzzleHandler::middleware()`. `addHandler()` throws a `LogicException` for
+  a client without `getConfig()` instead of a fatal error.
+- Records logged before `HTTPRequestListener` keep their request, trace and runtime ids for the rest
+  of the request: the listener resets the context only when it still holds the previous main
+  request's. The listener now runs at priority 2048 (was 100), ahead of FrameworkBundle's request
+  listeners, so their logs already carry an incoming `request-id` / `traceparent`.
+- `symfony/service-contracts` (`ResetInterface`) is declared as a dependency (`^2.5|^3`).
+
 ## 1.2.0
 
 - Sentry: with W3C Trace Context on, `TracingIntegration` tags every event with `trace_id` and
