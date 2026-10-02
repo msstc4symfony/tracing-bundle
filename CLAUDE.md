@@ -21,7 +21,8 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 
 - `Storage\RequestIdService` holds the context; `ResetInterface` + `kernel.reset` tag.
 - Entry points reset it: `HTTPRequestListener` (main request only, and only when the context is
-  still the previous main request's — early logs keep their ids, 1.3+), `ConsoleSubscriber`,
+  no `kernel.reset` ran since the previous main request — early logs keep their ids, 1.3+;
+  the listener is itself `kernel.reset`-tagged, 1.3.1), `ConsoleSubscriber`,
   `IncomingStampMiddleware` (only for messages with `ReceivedStamp`).
 - Exits read it: `HttpClient\HttpClientDecorator` on `http_client.transport` (priority -15),
   Guzzle middleware via the client's `handler` config or, for factory-built clients, a service

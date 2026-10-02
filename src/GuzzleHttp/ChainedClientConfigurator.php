@@ -15,11 +15,11 @@ use GuzzleHttp\ClientInterface;
  */
 final readonly class ChainedClientConfigurator
 {
-    /** @var Closure(ClientInterface): mixed */
+    /** @var Closure(ClientInterface): void */
     private Closure $configurator;
 
     /**
-     * @param callable(ClientInterface): mixed $configurator
+     * @param callable(ClientInterface): void $configurator a Symfony service configurator; its result is ignored
      */
     public function __construct(
         callable $configurator,

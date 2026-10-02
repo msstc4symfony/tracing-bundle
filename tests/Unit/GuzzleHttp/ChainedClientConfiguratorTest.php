@@ -8,6 +8,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\ChainedClientConfigurator;
 use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
@@ -27,13 +28,16 @@ final class ChainedClientConfiguratorTest extends TestCase
             self::markTestSkipped('guzzlehttp/guzzle is not installed');
         }
 
-        $transport = new MockHandler([new Response()]);
+        $transport = new MockHandler([new Response(), new Response()]);
         $client = new Client(['handler' => HandlerStack::create($transport)]);
         $configured = [];
+        $tracedWhileConfiguring = null;
 
         $chain = new ChainedClientConfigurator(
-            static function (ClientInterface $client) use (&$configured): void {
+            static function (ClientInterface $client) use (&$configured, &$tracedWhileConfiguring, $transport): void {
                 $configured[] = $client;
+                $client->send(new Request('GET', 'https://example.com'));
+                $tracedWhileConfiguring = $transport->getLastRequest()?->hasHeader('request-id');
             },
             new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc')),
         );
@@ -41,6 +45,7 @@ final class ChainedClientConfiguratorTest extends TestCase
         $client->request('GET', 'https://example.com');
 
         self::assertSame([$client], $configured);
+        self::assertFalse($tracedWhileConfiguring, 'the own configurator runs first');
         self::assertSame(['abc'], $transport->getLastRequest()?->getHeader('request-id'));
     }
 }

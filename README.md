@@ -52,8 +52,8 @@ COMPONENT_NAME=api
 
 * HTTP requests and console commands start a new trace (sub-requests keep the main one).
   Records logged before the request listener (kernel boot, request listeners above priority
-  2048) keep their ids: the listener resets the trace only when it still holds the previous main
-  request's (the kernel's `kernel.reset` or a fresh PHP process already opened a new one). An
+  2048) keep their ids: the listener resets the trace unless `kernel.reset` (or a fresh PHP
+  process) opened a new one since the previous main request. An
   incoming `request-id` / `traceparent` replaces the request and trace id from that point on;
   the runtime id stays.
 * Symfony HttpClient: every framework client, default and scoped, sends the trace headers

@@ -91,12 +91,29 @@ final class HTTPRequestListenerTest extends TestCase
     public function testKeepsTheEarlyIdsAfterAKernelReset(): void
     {
         $this->listener->onRequest($this->requestEvent(['HTTP_REQUEST_ID' => 'previous-request']));
+        // kernel.reset resets every tagged service, the listener included.
         $this->storage->reset();
+        $this->listener->reset();
         $requestId = $this->storage->getRequestId();
 
         $this->listener->onRequest($this->requestEvent([]));
 
         self::assertSame($requestId, $this->storage->getRequestId());
+    }
+
+    public function testDoesNotInheritAUnitThatRanBetweenRequestsWithoutAKernelReset(): void
+    {
+        $this->listener->onRequest($this->requestEvent([]));
+        // An in-process console command or a received message opens its own unit.
+        $this->storage->reset();
+        $this->storage->setRequestId('message');
+
+        $runtimeId = $this->storage->getRuntimeId();
+
+        $this->listener->onRequest($this->requestEvent([]));
+
+        self::assertNotSame('message', $this->storage->getRequestId());
+        self::assertNotSame($runtimeId, $this->storage->getRuntimeId());
     }
 
     public function testRunsBeforeTheFrameworkRequestListeners(): void

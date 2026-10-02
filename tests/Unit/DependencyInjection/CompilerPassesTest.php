@@ -17,6 +17,7 @@ use Msstc4Symfony\TracingBundle\Test\Unit\GuzzleHttp\Fixture\ClientWithoutConfig
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
@@ -85,15 +86,17 @@ final class CompilerPassesTest extends TestCase
         );
     }
 
-    public function testReadsANamedConfigArgument(): void
+    public function testTracesANamedConfigArgumentOnceTheContainerResolvedIt(): void
     {
         $container = $this->guzzleContainer();
-        $container->setDefinition('github', new Definition(Client::class, ['$config' => ['timeout' => 3]]));
+        $container->getDefinition(RequestIdGuzzleHandler::class)->setSynthetic(true);
+        $container->setDefinition('github', new Definition(Client::class, ['$config' => ['timeout' => 3]])->setPublic(true));
+        $container->addCompilerPass(new GuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
 
-        new GuzzlePass()->process($container);
+        $container->compile(true);
 
         self::assertEquals(
-            ['$config' => ['timeout' => 3, 'handler' => $this->tracedHandler(null)]],
+            [['timeout' => 3, 'handler' => $this->tracedHandler(null)]],
             $container->getDefinition('github')->getArguments(),
         );
     }

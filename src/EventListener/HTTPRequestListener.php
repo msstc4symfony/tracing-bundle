@@ -14,8 +14,9 @@ use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Contracts\Service\ResetInterface;
 
-final class HTTPRequestListener implements EventSubscriberInterface
+final class HTTPRequestListener implements EventSubscriberInterface, ResetInterface
 {
     public const string REQUEST_ID_HEADER = 'request-id';
 
@@ -25,8 +26,11 @@ final class HTTPRequestListener implements EventSubscriberInterface
 
     public const string TRACESTATE_HEADER = 'tracestate';
 
-    /** Runtime id the previous main request ran under, to tell its leftovers from this request's own early ids. */
-    private ?string $previousRuntimeId = null;
+    /**
+     * Whether kernel.reset (or a fresh container) opened the current unit after the previous main
+     * request: records logged before this listener then already carry the unit's ids.
+     */
+    private bool $unitOpenedByReset = true;
 
     public function __construct(
         private readonly RequestIdServiceInterface $requestIdService,
@@ -51,12 +55,12 @@ final class HTTPRequestListener implements EventSubscriberInterface
             return;
         }
 
-        // A unit that kernel.reset (or a fresh process) already opened may have logged before this
-        // listener; resetting again would strand those records under ids this request never uses.
-        if ($this->requestIdService->getRuntimeId() === $this->previousRuntimeId) {
+        // Not a runtime-id comparison: a console command or message handled in-process between
+        // requests also changes the runtime id, and its unit must not leak into this request.
+        if (!$this->unitOpenedByReset) {
             $this->requestIdService->reset();
         }
-        $this->previousRuntimeId = $this->requestIdService->getRuntimeId();
+        $this->unitOpenedByReset = false;
 
         $headers = $event->getRequest()->headers;
         $traceParent = $this->continueW3cTrace($headers);
@@ -93,6 +97,12 @@ final class HTTPRequestListener implements EventSubscriberInterface
         $this->w3cTraceContext->continueTrace($traceParent, TraceState::fromHeaders($headers->all(self::TRACESTATE_HEADER)));
 
         return $traceParent;
+    }
+
+    #[Override]
+    public function reset(): void
+    {
+        $this->unitOpenedByReset = true;
     }
 
     public function onResponse(ResponseEvent $event): void

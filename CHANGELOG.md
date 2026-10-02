@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1
+
+- `HTTPRequestListener` resets the context unless `kernel.reset` ran since the previous main
+  request (it is now `kernel.reset`-tagged itself). 1.3.0 compared runtime ids, so a console
+  command or a received message handled in-process between requests without `kernel.reset`
+  leaked its ids into the next request.
+- `GuzzlePass` reads the client config from argument 0 only: named arguments are already
+  resolved when it runs.
+- Internal: tighter Guzzle tests (middleware added once, own configurator runs first), shared
+  `GuzzleOptions` type alias, `ChainedClientConfigurator` typed as a `void` configurator.
+
 ## 1.3.0
 
 - Guzzle 8 support (Guzzle 7 keeps working). `GuzzleHttp\ClientInterface::getConfig()` is gone in 8,

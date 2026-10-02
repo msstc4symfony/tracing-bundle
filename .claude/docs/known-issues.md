@@ -135,10 +135,12 @@ priority 100000).
   trace id (заголовки ещё не прочитаны); общий у них с остальным запросом только runtime id.
   Окно — загрузка ядра и request-слушатели с priority > 2048 (например, `TracingRequestListener`
   sentry-symfony, 4097);
-- если главный запрос обрабатывается в том же процессе после другой единицы работы без
-  `kernel.reset` между ними (первый `$kernel->handle()` внутри консольной команды или
-  обработчика сообщения), запрос продолжает трассу этой единицы — её runtime id слушатель не
-  видел. `Kernel` сбрасывает сервисы только перед 2-м и следующими `handle()`;
+- если главный запрос — первый для слушателя или первый после `kernel.reset`, а между ними в
+  том же процессе прошла другая единица работы (первый `$kernel->handle()` внутри консольной
+  команды или обработчика сообщения), запрос продолжает трассу этой единицы: флаг
+  «юнит открыт сбросом» не знает, что хранилище с тех пор сбрасывали. `Kernel` сбрасывает
+  сервисы только перед 2-м и следующими `handle()`. Без `kernel.reset` между запросами (1.3.0
+  ловил и это неверно, через сравнение runtime id) с 1.3.1 сброс есть всегда;
 - `ConsoleSubscriber` по-прежнему всегда делает `reset()` + `generate()` — записи до
   `ConsoleEvents::COMMAND` (priority 100) получают другие id.
 
@@ -175,3 +177,30 @@ priority 100000).
 сообщение `GuzzlePass` в compiler log уточнено (клиент `GuzzleHttp\Client` с конфигом-параметром
 тоже уходит в ветку `getConfig()`), добавлен тест `testConfiguresAClientWhoseConfigIsAParameter`.
 Отклонено: эквивалентные мутанты priority ±1 в `HTTPRequestListener::getSubscribedEvents()`.
+
+## Ревью 1.3.0 → исправления в 1.3.1 (2026-10-02 UTC)
+
+Исправлено:
+- `GuzzlePass`: ветка `'$config'` убрана — pass стоит на `TYPE_BEFORE_REMOVING`, к этому моменту
+  `ResolveNamedArgumentsPass` уже перенёс именованный аргумент в индекс 0. Изолированный тест
+  заменён на `CompilerPassesTest::testTracesANamedConfigArgumentOnceTheContainerResolvedIt`
+  (полный `compile()`). Формат лога — `UNREACHABLE_CLIENT_LOG`.
+- `HTTPRequestListener`: флаг `kernel.reset` вместо сравнения runtime id (см. architecture.md);
+  RED: `testDoesNotInheritAUnitThatRanBetweenRequestsWithoutAKernelReset`. Тег `kernel.reset`
+  ловит `ContainerCompileTest::testLogsBeforeTheTracingListenerShareTheTraceOfTheNextRequest`.
+- «Ровно один middleware»: заголовки этого не видят (второй middleware не перезаписывает их), а
+  у `HandlerStack` Guzzle 8 нет `__toString()` — тест считает записи приватного `$stack`
+  через reflection (`tracingMiddlewareCount()`).
+- Порядок в `ChainedClientConfigurator`: конфигуратор приложения шлёт запрос и видит, что
+  `request-id` ещё нет.
+- `ChainedClientConfigurator`: `callable(ClientInterface): void` вместо `mixed`.
+
+Отклонено:
+- `GuzzleOptions = array<string, mixed>`: `HandlerStack` Guzzle типизирует опции как
+  `array<array-key, mixed>`/`array<mixed>`; при `string` PHPStan отвергает передачу
+  `middleware()` в `HandlerStack::push()` и `decorateHandler()` в `new Client(['handler' => …])`
+  (`argument.type`). Алиас `GuzzleOptions` введён, но с `array-key`.
+- PHPStan на Guzzle 7 (`method_exists` / `ClientWithoutConfig`): PHPStan в bundle-standard 1.8.0
+  запускается только на `composer-ci.lock` (Guzzle 8); вдобавок прогон в prefer-lowest
+  (Guzzle 7.15.2, Symfony 6.4.0, PHPStan 2.1.17) этих ошибок не дал — единственная ошибка
+  `TestKernel.php:74` (`binaryOp` с `mixed` от стабов Symfony 6.4.0), вне области ревью и CI.

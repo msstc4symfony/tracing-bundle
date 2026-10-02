@@ -21,12 +21,13 @@ use Symfony\Component\DependencyInjection\Reference;
  * gets the middleware in its `handler` config, which works on Guzzle 7 and 8 and leaves any
  * configurator of the application alone. Other clients (built by a factory, with their own
  * constructor or with a config resolved only at run time) are configured after creation through
- * `getConfig()`; without it they cannot be
- * reached and are only reported in the container compilation log.
+ * `getConfig()`; clients without it cannot be reached and are only reported in the container
+ * compilation log.
  */
 final class GuzzlePass implements CompilerPassInterface
 {
-    private const array CONFIG_ARGUMENTS = [0, '$config'];
+    private const string UNREACHABLE_CLIENT_LOG = 'Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); '
+        . 'create it with the handler returned by %s::decorateHandler().';
 
     #[Override]
     public function process(ContainerBuilder $container): void
@@ -54,7 +55,7 @@ final class GuzzlePass implements CompilerPassInterface
             }
 
             if (!$reflection->hasMethod('getConfig')) {
-                $container->log($this, sprintf('Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); create it with the handler returned by %s::decorateHandler().', $id, Client::class, RequestIdGuzzleHandler::class));
+                $container->log($this, sprintf(self::UNREACHABLE_CLIENT_LOG, $id, Client::class, RequestIdGuzzleHandler::class));
 
                 continue;
             }
@@ -75,9 +76,8 @@ final class GuzzlePass implements CompilerPassInterface
             return false;
         }
 
-        $arguments = $definition->getArguments();
-        $key = array_find(self::CONFIG_ARGUMENTS, static fn (int|string $key): bool => array_key_exists($key, $arguments)) ?? 0;
-        $config = $arguments[$key] ?? [];
+        // Runs after ResolveNamedArgumentsPass: a `$config` argument is already at index 0.
+        $config = $definition->getArguments()[0] ?? [];
 
         // A parameter or expression is resolved only later; its content cannot be extended here.
         if (!is_array($config)) {
@@ -87,7 +87,7 @@ final class GuzzlePass implements CompilerPassInterface
         $config['handler'] = new Definition(HandlerStack::class, [$config['handler'] ?? null])
             ->setFactory([$tracing, 'decorateHandler'])
         ;
-        $definition->setArgument($key, $config);
+        $definition->setArgument(0, $config);
 
         return true;
     }

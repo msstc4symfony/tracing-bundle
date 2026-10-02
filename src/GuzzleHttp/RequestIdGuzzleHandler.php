@@ -22,7 +22,10 @@ use Psr\Http\Message\RequestInterface;
  * (`decorateHandler()`), or, for clients it cannot build itself, as a service configurator
  * (`addHandler()`). Either way the client keeps its concrete type for autowiring.
  *
- * @phpstan-type GuzzleHandler callable(RequestInterface, array<array-key, mixed>): PromiseInterface
+ * Request options are keyed `array-key`, as Guzzle's own `HandlerStack` types them.
+ *
+ * @phpstan-type GuzzleOptions array<array-key, mixed>
+ * @phpstan-type GuzzleHandler callable(RequestInterface, GuzzleOptions): PromiseInterface
  */
 final readonly class RequestIdGuzzleHandler
 {
@@ -79,7 +82,7 @@ final readonly class RequestIdGuzzleHandler
     /**
      * The middleware itself, for stacks built by hand: `$stack->push($handler->middleware())`.
      *
-     * @return Closure(GuzzleHandler): (Closure(RequestInterface, array<array-key, mixed>): PromiseInterface)
+     * @return Closure(GuzzleHandler): (Closure(RequestInterface, GuzzleOptions): PromiseInterface)
      */
     public function middleware(): Closure
     {
@@ -89,7 +92,7 @@ final readonly class RequestIdGuzzleHandler
     /**
      * @param GuzzleHandler $handler
      *
-     * @return Closure(RequestInterface, array<array-key, mixed>): PromiseInterface
+     * @return Closure(RequestInterface, GuzzleOptions): PromiseInterface
      */
     private function wrap(callable $handler): Closure
     {

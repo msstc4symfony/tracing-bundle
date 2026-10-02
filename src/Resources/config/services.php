@@ -32,7 +32,9 @@ return static function (ContainerConfigurator $container): void {
     ;
     $services->alias(RequestIdServiceInterface::class, RequestIdService::class)->public();
 
-    $services->set(HTTPRequestListener::class);
+    $services->set(HTTPRequestListener::class)
+        ->tag('kernel.reset', ['method' => 'reset'])
+    ;
     $services->set(ConsoleSubscriber::class);
     $services->set(RequestIdProcessor::class)->tag('monolog.processor');
 

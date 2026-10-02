@@ -25,6 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\Event\WorkerStoppedEvent;
@@ -106,19 +107,20 @@ final class ContainerCompileTest extends KernelTestCase
 
         $kernel = self::bootKernel();
 
-        $response = $kernel->handle(Request::create('/ping'));
+        $this->assertEarlyLogSharesTheTrace($kernel->handle(Request::create('/ping')));
+    }
 
-        $handler = self::getContainer()->get('monolog.handler.main');
-        self::assertInstanceOf(TestHandler::class, $handler);
-        $records = $handler->getRecords();
-        $early = array_find($records, static fn (LogRecord $record): bool => $record->message === EarlyLogListener::MESSAGE);
-        self::assertInstanceOf(LogRecord::class, $early);
-        self::assertSame($response->headers->get('request-id'), $early->extra['request_id'] ?? null);
-        $last = $records[array_key_last($records)];
-        self::assertNotSame($early, $last);
-        foreach (['runtime_id', 'request_id', 'trace_id'] as $key) {
-            self::assertSame($last->extra[$key] ?? null, $early->extra[$key] ?? null, $key);
-        }
+    public function testLogsBeforeTheTracingListenerShareTheTraceOfTheNextRequest(): void
+    {
+        $this->skipUnless(TestKernel::hasMonologBundle(), 'symfony/monolog-bundle');
+
+        $kernel = self::bootKernel();
+        $first = $kernel->handle(Request::create('/ping'));
+        // The second handle() runs kernel.reset first, which also clears the log handler.
+        $second = $kernel->handle(Request::create('/ping'));
+
+        self::assertNotSame($first->headers->get('request-id'), $second->headers->get('request-id'));
+        $this->assertEarlyLogSharesTheTrace($second);
     }
 
     public function testKernelResetForgetsTheTrace(): void
@@ -259,5 +261,20 @@ final class ContainerCompileTest extends KernelTestCase
         self::assertInstanceOf(RequestIdServiceInterface::class, $storage);
 
         return $storage;
+    }
+
+    private function assertEarlyLogSharesTheTrace(Response $response): void
+    {
+        $handler = self::getContainer()->get('monolog.handler.main');
+        self::assertInstanceOf(TestHandler::class, $handler);
+        $records = $handler->getRecords();
+        $early = array_find($records, static fn (LogRecord $record): bool => $record->message === EarlyLogListener::MESSAGE);
+        self::assertInstanceOf(LogRecord::class, $early);
+        self::assertSame($response->headers->get('request-id'), $early->extra['request_id'] ?? null);
+        $last = $records[array_key_last($records)];
+        self::assertNotSame($early, $last);
+        foreach (['runtime_id', 'request_id', 'trace_id'] as $key) {
+            self::assertSame($last->extra[$key] ?? null, $early->extra[$key] ?? null, $key);
+        }
     }
 }

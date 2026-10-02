@@ -19,7 +19,11 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
+use ReflectionProperty;
 
+/**
+ * @phpstan-import-type GuzzleHandler from RequestIdGuzzleHandler
+ */
 #[CoversClass(RequestIdGuzzleHandler::class)]
 #[UsesClass(RequestIdService::class)]
 #[UsesClass(TraceParent::class)]
@@ -46,6 +50,9 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         $handler->addHandler($this->client);
         $handler->addHandler($this->client);
 
+        $stack = $this->client->getConfig('handler');
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        self::assertSame(1, $this->tracingMiddlewareCount($stack));
         $this->client->request('GET', 'https://example.com');
 
         $request = $this->transport->getLastRequest();
@@ -101,6 +108,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         $stack = HandlerStack::create($this->transport);
         $handler->decorateHandler($handler->decorateHandler($stack));
 
+        self::assertSame(1, $this->tracingMiddlewareCount($stack));
         new Client(['handler' => $stack])->request('GET', 'https://example.com');
 
         self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
@@ -197,6 +205,19 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         $this->client->request('GET', 'https://example.com');
 
         self::assertFalse($this->transport->getLastRequest()?->hasHeader('traceparent'));
+    }
+
+    /**
+     * The headers alone cannot tell: a second middleware keeps the headers the first one set.
+     *
+     * @param HandlerStack<covariant GuzzleHandler> $stack
+     */
+    private function tracingMiddlewareCount(HandlerStack $stack): int
+    {
+        $entries = new ReflectionProperty(HandlerStack::class, 'stack')->getValue($stack);
+        self::assertIsArray($entries);
+
+        return count(array_filter($entries, static fn (mixed $entry): bool => is_array($entry) && ($entry[1] ?? null) === RequestIdGuzzleHandler::MIDDLEWARE_NAME));
     }
 
     private function continuedTrace(): RequestIdService

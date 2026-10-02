@@ -17,11 +17,14 @@
 полученным воркером, и при закрытии unit воркера (`WorkerTraceSubscriber`). Request id
 генерируется лениво.
 
-HTTP (`HTTPRequestListener`, `kernel.request` priority 2048 с 1.3, раньше 100): слушатель
-помнит runtime id, под которым начался предыдущий главный запрос (`$previousRuntimeId`), и
-делает `reset()`, только если хранилище всё ещё в нём. Иначе контекст уже открыт заново
-(`services_resetter` в `Kernel::boot()` перед 2-м и следующими `handle()`, свежий процесс FPM) и
-записи, залогированные до слушателя, сохраняют runtime/request/trace id. Заголовки
+HTTP (`HTTPRequestListener`, `kernel.request` priority 2048 с 1.3, раньше 100): слушатель сам
+`ResetInterface` с тегом `kernel.reset` (1.3.1) и держит флаг `$unitOpenedByReset` (true у нового
+объекта и после `kernel.reset`, false после главного запроса). `reset()` хранилища — только при
+false. При true контекст уже открыт заново (`services_resetter` в `Kernel::boot()` перед 2-м и
+следующими `handle()`, свежий процесс FPM) и записи, залогированные до слушателя, сохраняют
+runtime/request/trace id. В 1.3.0 вместо флага сравнивался runtime id (`$previousRuntimeId`):
+консольная команда или сообщение in-process между запросами тоже меняют runtime id, и без
+`kernel.reset` следующий запрос наследовал их ids. Заголовки
 `request-id`/`traceparent` перекрывают request id и trace id, runtime id остаётся.
 
 Messenger (`IncomingStampMiddleware`, счётчик вложенности):
