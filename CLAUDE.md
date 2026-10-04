@@ -1,0 +1,50 @@
+# CLAUDE.md
+
+Guidance for Claude Code in this repository. Deep references live under `.claude/docs/`.
+
+## What this is
+
+Symfony bundle (`msstc4symfony/tracing-bundle`, namespace `Msstc4Symfony\TracingBundle`)
+that propagates a trace context — request id, caller (`request from`) and runtime id —
+across HTTP (in and out), Messenger, Monolog and Sentry. PHP >= 8.4, Symfony 7.4 / 8.x.
+Library code only.
+
+## Common commands
+
+Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
+
+- `make check` — `php -l`, PHPStan level 10, PHP-CS-Fixer, `composer validate --strict`,
+  `composer audit`, Rector dry-run, deptrac. Run as `COMPOSER=composer-ci.json make check`.
+- `make test` — unit + integration suites; `make infection`, `make fix`, `make regenerate-baseline`.
+
+## Architecture in 60 seconds
+
+- `Storage\RequestIdService` holds the context; `ResetInterface` + `kernel.reset` tag.
+- Entry points reset it: `HTTPRequestListener` (main request only, and only when no `kernel.reset`
+  ran since the previous main request — early logs keep their ids; the listener is itself
+  `kernel.reset`-tagged), `ConsoleSubscriber`,
+  `IncomingStampMiddleware` (only for messages with `ReceivedStamp`).
+- Exits read it: `HttpClient\HttpClientDecorator` on `http_client.transport` (priority -15),
+  Guzzle middleware via the client's `handler` config or, for factory-built clients, a service
+  configurator (`GuzzlePass`, Guzzle 7 and 8), `OutgoingStampMiddleware`,
+  `RequestIdProcessor`, `TracingIntegration` (W3C → Sentry tags `trace_id`/`span_id`).
+- W3C Trace Context is always on and part of `RequestIdServiceInterface` (state in
+  `RequestIdService`); every integration depends on that interface only. Messenger carries one
+  `TraceStamp(requestId, requestFrom, traceParent, ?traceState)`.
+- Config `msstc4symfony_tracing`: `application_name` / `component_name` (env defaults) →
+  parameters read by `RequestIdService`.
+- `Resources/config/services.php` registers optional integrations behind `interface_exists`.
+  Rector's `FromServicePublicToDefaultsPublicRector` and `ServiceSettersToSettersAutodiscoveryRector`
+  are skipped on purpose — they rewrite this file into public autodiscovery.
+
+Details: `.claude/docs/architecture.md`. **Read `.claude/docs/known-issues.md` before chasing
+a "weird" failure.**
+
+## Pointers
+
+- `.claude/docs/architecture.md` — wiring, layers, decoration order.
+- `.claude/docs/conventions.md` — guards, header handling, reset rules.
+- `.claude/docs/testing.md` — unit layout, real-kernel test, mock transport.
+- `.claude/docs/tooling.md` — manifests, `make check`, Rector skips.
+- `.claude/docs/ci.md` — reusable workflow.
+- `.claude/docs/known-issues.md` — what was broken and why, CI/prefer-lowest findings, declined review items.

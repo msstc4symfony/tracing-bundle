@@ -1,0 +1,71 @@
+{
+  "name": "msstc4symfony/tracing-bundle",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Maxim Shamaev",
+      "email": "maxim.shamaev@gmail.com"
+    }
+  ],
+  "type": "symfony-bundle",
+  "description": "Request tracing for Symfony: propagates request id and caller across HTTP, Messenger and logs",
+  "minimum-stability": "stable",
+  "keywords": [
+    "php",
+    "symfony",
+    "tracing"
+  ],
+  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Msstc4Symfony\\TracingBundle\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Msstc4Symfony\\TracingBundle\\Test\\": "tests/"
+    }
+  },
+  "require": {
+    "php": ">=8.4",
+    "composer-runtime-api": ">=2.2",
+    "monolog/monolog": "^3.5",
+    "symfony/console": "^7.4|^8.0",
+    "symfony/event-dispatcher": "^7.4|^8.0",
+    "symfony/framework-bundle": "^7.4|^8.0",
+    "symfony/service-contracts": "^3",
+    "symfony/uid": "^7.4|^8.0"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.55",
+    "phpstan/extension-installer": "^1.4",
+    "phpstan/phpstan": "^2.1",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "phpstan/phpstan-symfony": "^2.0",
+    "phpunit/phpunit": ">=11.0",
+    "rector/rector": "^2.1",
+    "roave/security-advisories": "dev-latest"
+  },
+  "suggest": {
+    "guzzlehttp/guzzle": "To propagate the trace through Guzzle clients",
+    "sentry/sentry": "To attach the trace to Sentry events (TracingIntegration)",
+    "symfony/http-client": "To propagate the trace through Symfony HttpClient",
+    "symfony/messenger": "To propagate the trace through Messenger messages",
+    "symfony/monolog-bundle": "To add the trace to every log record"
+  },
+  "config": {
+    "allow-plugins": {
+      "phpstan/extension-installer": true
+    },
+    "sort-packages": true
+  },
+  "conflict": {
+    "symfony/symfony": "*"
+  },
+  "extra": {
+    "symfony": {
+      "allow-contrib": false,
+      "require": "^7.4|^8.0"
+    }
+  }
+}

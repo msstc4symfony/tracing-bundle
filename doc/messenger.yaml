@@ -1,0 +1,9 @@
+framework:
+  messenger:
+    buses:
+      messenger.bus.default:
+        middleware:
+          # Stamps dispatched messages with the current trace.
+          - Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware
+          # Restores the sender's trace for consumed messages and drops it afterwards.
+          - Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware
