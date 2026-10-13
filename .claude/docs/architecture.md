@@ -86,6 +86,12 @@ Messenger (`IncomingStampMiddleware`, счётчик вложенности):
   формат — `TraceParent::isSpanId()`, единственный источник правила).
   `resetRequestData()`/`reset()` чистят их, `snapshot()`/`restore()` несут их через поля `TraceContext` (`parentSpanId` — необязательный последний параметр) →
   sync-сообщения и воркеры не требуют отдельной логики.
+  `TraceContext::withChildSpan()` (v1.2.0) — копия для вложенной единицы работы: `traceParent->child()`,
+  `parentSpanId` = span этого контекста, остальное как есть; без `traceParent` — `LogicException`
+  (лениво созданный trace внутри вложенной единицы `restore()` выбросил бы). Перед `snapshot()` нужны и
+  `getTraceParent()`, и `getRequestId()`: request id тоже ленивый (`ensureContext()`), созданный внутри вложенной
+  единицы он потеряется при `restore($outer)`, и логи одного запроса разойдутся. Пользователь —
+  `tracing-bridge-logic` (span на каждый Action); новое поле `TraceContext` надо копировать и здесь.
 - `TraceState` хранит члены как пришли, но валидирует грамматику, дубликаты ключей, ≤ 32;
   > 512 символов — усечение (сначала члены > 128 с конца, затем с конца). Флаги `TraceParent`
   маскируются до `0x03` (sampled|random).
