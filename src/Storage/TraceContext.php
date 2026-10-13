@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Storage;
 
 use InvalidArgumentException;
+use LogicException;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
 use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
 
@@ -30,5 +31,27 @@ final readonly class TraceContext
         if ($parentSpanId !== null && !TraceParent::isSpanId($parentSpanId)) {
             throw new InvalidArgumentException(sprintf('Parent span id "%s" is not a W3C span id.', $parentSpanId));
         }
+    }
+
+    /**
+     * Context of a unit nested in this one: same trace and request, a new span whose parent is this span.
+     *
+     * @throws LogicException when this context has no trace yet
+     */
+    public function withChildSpan(): self
+    {
+        if (!$this->traceParent instanceof TraceParent) {
+            throw new LogicException('A child span needs a traceParent; this context has none.');
+        }
+
+        return new self(
+            $this->runtimeId,
+            $this->requestId,
+            $this->requestFrom,
+            $this->traceParent->child(),
+            $this->remoteTraceParent,
+            $this->traceState,
+            $this->traceParent->parentId,
+        );
     }
 }

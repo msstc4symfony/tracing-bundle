@@ -4,6 +4,14 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [1.2.0] - 2026-10-13
+
+### Added
+
+- `TraceContext::withChildSpan()`: a copy for a unit nested in this one — same trace, request and
+  remote context, a new span id, this span as `parentSpanId`. Throws `LogicException` when the
+  context has no `traceParent`.
+
 ## [1.1.0] - 2026-10-13
 
 ### Added
@@ -55,5 +63,6 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[1.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.2.0
 [1.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.1.0
 [1.0.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.0.0

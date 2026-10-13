@@ -126,6 +126,24 @@ Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit
 trace. As outgoing calls send the unit's own span, a receiver's `parent_span_id` is a `span_id` in
 the sender's logs, so the logs of every service rebuild the call tree.
 
+A nested unit of work inside one process (an application action, a batch item) can run in its
+own span, a child of the current one:
+
+```php
+// Lazily created ids must exist before the snapshot, or the nested unit's ones are lost on restore.
+$trace->getTraceParent();
+$trace->getRequestId();
+$outer = $trace->snapshot();
+$trace->restore($outer->withChildSpan());
+try {
+    // nested unit
+} finally {
+    $trace->restore($outer);
+}
+```
+
+`withChildSpan()` throws `LogicException` on a context without a trace.
+
 Long-running workers reset the W3C context with the rest of the trace: every main request,
 consumed message and `kernel.reset` starts clean.
 
