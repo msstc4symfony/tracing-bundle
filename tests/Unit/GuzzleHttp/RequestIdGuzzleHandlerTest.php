@@ -152,7 +152,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler(new ClientWithoutConfig());
     }
 
-    public function testSendsTheW3cTraceWithANewSpanPerRequest(): void
+    public function testSendsTheW3cTraceWithThisUnitsSpan(): void
     {
         $storage = $this->continuedTrace();
         new RequestIdGuzzleHandler($storage)->addHandler($this->client);
@@ -167,8 +167,8 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         self::assertInstanceOf(TraceParent::class, $second);
         self::assertSame('4bf92f3577b34da6a3ce929d0e0e4736', $first->traceId);
         self::assertSame(0, $first->flags);
-        self::assertSame($first->traceId, $second->traceId);
-        self::assertNotSame($first->parentId, $second->parentId);
+        self::assertSame($storage->getTraceParent()->parentId, $first->parentId);
+        self::assertSame($first->toHeader(), $second->toHeader());
         self::assertSame('rojo=1', $state);
     }
 

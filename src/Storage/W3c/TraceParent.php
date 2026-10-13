@@ -60,6 +60,14 @@ final readonly class TraceParent
     }
 
     /**
+     * A W3C span id: 16 lowercase hex digits, not all zero.
+     */
+    public static function isSpanId(string $value): bool
+    {
+        return preg_match('/^[0-9a-f]{16}$/D', $value) === 1 && $value !== self::INVALID_PARENT_ID;
+    }
+
+    /**
      * A new sampled trace: random 16-byte trace id and 8-byte span id.
      */
     public static function start(): self

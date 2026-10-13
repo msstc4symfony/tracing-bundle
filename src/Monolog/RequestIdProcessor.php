@@ -28,6 +28,8 @@ final readonly class RequestIdProcessor implements ProcessorInterface
             'request_from' => $this->storage->getRequestFrom(),
             'trace_id' => $traceParent->traceId,
             'span_id' => $traceParent->parentId,
+            // Through snapshot(): a new interface method would break other implementations.
+            'parent_span_id' => $this->storage->snapshot()->parentSpanId,
         ]);
     }
 }

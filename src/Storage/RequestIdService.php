@@ -24,6 +24,9 @@ final class RequestIdService implements RequestIdServiceInterface
 
     private ?TraceState $traceState = null;
 
+    /** @var non-empty-string|null */
+    private ?string $parentSpanId = null;
+
     public function __construct(
         #[Autowire(param: 'msstc4symfony_tracing.application_name')]
         private readonly string $applicationName,
@@ -55,6 +58,7 @@ final class RequestIdService implements RequestIdServiceInterface
         $this->traceParent = null;
         $this->remoteTraceParent = null;
         $this->traceState = null;
+        $this->parentSpanId = null;
     }
 
     #[Override]
@@ -116,6 +120,7 @@ final class RequestIdService implements RequestIdServiceInterface
             $this->traceParent,
             $this->remoteTraceParent,
             $this->traceState,
+            $this->parentSpanId,
         );
     }
 
@@ -128,6 +133,8 @@ final class RequestIdService implements RequestIdServiceInterface
         $this->traceParent = $context->traceParent;
         $this->remoteTraceParent = $context->remoteTraceParent;
         $this->traceState = $context->traceState;
+        // A parent from another trace would put a false edge into the log tree.
+        $this->parentSpanId = $context->traceParent instanceof TraceParent ? $context->parentSpanId : null;
     }
 
     #[Override]
@@ -136,6 +143,7 @@ final class RequestIdService implements RequestIdServiceInterface
         $this->remoteTraceParent = $received;
         $this->traceParent = $received->child();
         $this->traceState = $state;
+        $this->parentSpanId = $received->parentId;
 
         return $this;
     }
@@ -161,7 +169,7 @@ final class RequestIdService implements RequestIdServiceInterface
     #[Override]
     public function createOutgoingTraceParent(): TraceParent
     {
-        return $this->getTraceParent()->child();
+        return $this->getTraceParent();
     }
 
     /**

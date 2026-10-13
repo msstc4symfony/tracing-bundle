@@ -101,7 +101,7 @@ final class HttpClientDecoratorTest extends TestCase
         self::assertSame('abc', $this->sentHeaders[0]['request-id'] ?? null);
     }
 
-    public function testSendsTheW3cTraceWithANewSpanPerRequest(): void
+    public function testSendsTheW3cTraceWithThisUnitsSpan(): void
     {
         $storage = $this->continuedTrace();
         $decorator = new HttpClientDecorator($this->inner, $storage);
@@ -115,9 +115,8 @@ final class HttpClientDecoratorTest extends TestCase
         self::assertInstanceOf(TraceParent::class, $second);
         self::assertSame('4bf92f3577b34da6a3ce929d0e0e4736', $first->traceId);
         self::assertSame(0, $first->flags);
-        self::assertSame($first->traceId, $second->traceId);
-        self::assertNotSame($first->parentId, $second->parentId);
-        self::assertNotContains($first->parentId, ['00f067aa0ba902b7', $storage->getTraceParent()->parentId]);
+        self::assertSame($storage->getTraceParent()->parentId, $first->parentId);
+        self::assertSame($first->toHeader(), $second->toHeader());
         self::assertSame('rojo=1', $this->sentHeaders[0]['tracestate'] ?? null);
     }
 

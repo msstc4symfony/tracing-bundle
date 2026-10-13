@@ -193,3 +193,13 @@ priority 100000).
 - PHPStan на Guzzle 7 (`method_exists` / `ClientWithoutConfig`): PHPStan в bundle-standard
   запускается только на `composer-ci.lock` (Guzzle 8); прогон на Guzzle 7 (prefer-lowest) этих
   ошибок не дал.
+
+## `parent_span_id` (v1.1.0, 2026-10-13 UTC)
+
+- Исходящий `traceparent` раньше был `child()` на каждый вызов; этот клиентский span id никто не логировал,
+  и `parent_span_id` получателя указывал в пустоту. С 1.1.0 исходящий = свой span единицы работы.
+- `RequestIdProcessor` читает родителя через `snapshot()`: метод `getParentSpanId()` в интерфейсе сломал бы
+  сторонние реализации. Цена — `TraceContext` и `preg_match` на каждую запись лога. Отложено до 2.0:
+  добавить `getParentSpanId()` в `RequestIdServiceInterface` и читать напрямую.
+- Сторонняя реализация с невалидным span id в `snapshot()` уронит процессор на каждой записи — требование
+  формата записано в CHANGELOG (Upgrading) и в `@throws` конструктора `TraceContext`.

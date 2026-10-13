@@ -80,13 +80,20 @@ Messenger (`IncomingStampMiddleware`, счётчик вложенности):
   `RequestIdServiceInterface`; `HttpClientPass` передаёт обычную ссылку. Три
   поля — `traceParent` (спан этой единицы работы: trace-id + **свой** span id в поле
   `parentId` + flags; лениво `TraceParent::start()`), `remoteTraceParent` (как пришёл),
-  `traceState`. `resetRequestData()`/`reset()` чистят их, `snapshot()`/`restore()` несут их
-  через обязательные поля `TraceContext` → sync-сообщения и воркеры не требуют отдельной логики.
+  `traceState`, плюс `parentSpanId` (span id отправителя из `continueTrace()`, `null` у корня;
+  с v1.1.0; `TraceContext` проверяет формат W3C span id, а `restore()` отбрасывает родителя,
+  если в контексте нет `traceParent` — иначе в логах было бы ребро из чужого trace;
+  формат — `TraceParent::isSpanId()`, единственный источник правила).
+  `resetRequestData()`/`reset()` чистят их, `snapshot()`/`restore()` несут их через поля `TraceContext` (`parentSpanId` — необязательный последний параметр) →
+  sync-сообщения и воркеры не требуют отдельной логики.
 - `TraceState` хранит члены как пришли, но валидирует грамматику, дубликаты ключей, ≤ 32;
   > 512 символов — усечение (сначала члены > 128 с конца, затем с конца). Флаги `TraceParent`
   маскируются до `0x03` (sampled|random).
-- Исходящий `traceparent` = `getTraceParent()->child()`: новый span id на каждый запрос /
-  сообщение. Логи: `trace_id`, `span_id` (= свой span единицы работы).
+- Исходящий `traceparent` = `getTraceParent()` (с v1.1.0; в 1.0.0 был `->child()`): span
+  единицы работы как есть, так что `parent_span_id` получателя — это `span_id` в логах
+  отправителя, и дерево по логам сквозное между процессами (экспорта span нет, клиентский span
+  никто бы не залогировал). Логи: `trace_id`, `span_id` (свой span), `parent_span_id`
+  (`snapshot()->parentSpanId` — нового метода в интерфейсе нет ради BC сторонних реализаций).
 - Sentry: `TracingIntegration(RequestIdServiceInterface)` в
   глобальном event processor ставит **теги** `trace_id`/`span_id` (те же значения, что в логах),
   читая хранилище в момент захвата события; если на событии уже есть `trace_id` или `span_id`, не

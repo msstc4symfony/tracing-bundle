@@ -4,6 +4,28 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [1.1.0] - 2026-10-13
+
+### Added
+
+- `parent_span_id` in every Monolog record's `extra`: the span id of the unit that started this
+  one (the received `traceparent`), `null` when this unit started the trace.
+- `TraceContext::$parentSpanId` (optional last constructor argument), carried by `snapshot()` /
+  `restore()` and cleared on reset.
+
+### Changed
+
+- Outgoing `traceparent` (HttpClient, Guzzle, `TraceStamp`) carries this unit's own span id
+  instead of a new one per request or message, so a receiver's `parent_span_id` is a `span_id` in
+  the sender's logs. Calls made by one unit now share their `parent-id`.
+
+### Upgrading
+
+- A custom `RequestIdServiceInterface` implementation must pass the parent span id to the
+  `TraceContext` its `snapshot()` returns; otherwise `parent_span_id` is always `null`. It must be
+  a W3C span id (16 lowercase hex digits, not all zero): `TraceContext` throws
+  `InvalidArgumentException` otherwise, and `RequestIdProcessor` calls `snapshot()` for every record.
+
 ## [1.0.0] - 2026-10-04
 
 First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\TracingBundle`).
@@ -33,4 +55,5 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[1.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.1.0
 [1.0.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.0.0

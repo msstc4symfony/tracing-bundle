@@ -15,7 +15,7 @@ every service it touches:
 |---|---|---|
 | HTTP | `request-id` / `request-from` request headers, W3C `traceparent` / `tracestate` | same headers on the response and on every Symfony HttpClient / Guzzle request; `traceparent` / `tracestate` on outgoing requests |
 | Messenger | `TraceStamp` on consumed messages | `TraceStamp` on dispatched messages |
-| Logs | — | `runtime_id`, `request_id`, `request_from`, `trace_id`, `span_id` in every Monolog record's `extra` |
+| Logs | — | `runtime_id`, `request_id`, `request_from`, `trace_id`, `span_id`, `parent_span_id` in every Monolog record's `extra` |
 | Sentry (opt-in) | — | `runtime_id`, `request_id`, `request_from` in every event's `extra`; `trace_id`, `span_id` tags |
 
 ## Compatibility
@@ -102,12 +102,12 @@ Incoming request (main requests only):
   `request-from` is the header or `unknown`. An OpenTelemetry caller's trace then shares its id
   with this bundle's request id. With a `request-id` header both ids are kept as received.
 
-Outgoing (Symfony HttpClient, Guzzle, Messenger): `traceparent` with the
-same trace id and flags and a new span id for every request or message, plus the received
-`tracestate`. Without an incoming trace the unit starts one: random 16-byte trace id, 8-byte
-span id, flags `01`. A `traceparent` set by the caller is kept, and so is a `tracestate` set by
-the caller, even next to the bundle's own `traceparent` (dropping either would lose data the
-caller chose to send). No `traceresponse` header is sent.
+Outgoing (Symfony HttpClient, Guzzle, Messenger): `traceparent` with this unit's own span —
+the same trace id, flags and span id the unit logs — plus the received `tracestate`. Two calls
+from one unit therefore carry the same parent id. Without an incoming trace the unit starts
+one: random 16-byte trace id, 8-byte span id, flags `01`. A `traceparent` set by the caller is
+kept, and so is a `tracestate` set by the caller, even next to the bundle's own `traceparent`
+(dropping either would lose data the caller chose to send). No `traceresponse` header is sent.
 
 Both headers, including a `tracestate` received from outside, go to every host the clients
 call, third-party APIs included (see the spec's
@@ -120,6 +120,11 @@ bundle: Messenger serializers cannot decode a message with an unknown stamp clas
 message without the stamp starts a new trace and its request id is that trace id in UUID
 layout; a sync (`sync://`) message without it keeps the dispatching unit's request id and
 `request from` and runs as a child span of its trace.
+
+Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
+(the `traceparent` received over HTTP or in a `TraceStamp`), `null` when the unit started the
+trace. As outgoing calls send the unit's own span, a receiver's `parent_span_id` is a `span_id` in
+the sender's logs, so the logs of every service rebuild the call tree.
 
 Long-running workers reset the W3C context with the rest of the trace: every main request,
 consumed message and `kernel.reset` starts clean.

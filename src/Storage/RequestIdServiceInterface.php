@@ -45,12 +45,15 @@ interface RequestIdServiceInterface extends ResetInterface
 
     public function generate(): static;
 
+    /**
+     * Must carry the parent span id: `RequestIdProcessor` logs it as `parent_span_id`.
+     */
     public function snapshot(): TraceContext;
 
     public function restore(TraceContext $context): void;
 
     /**
-     * Joins the caller's trace; this unit gets its own span id.
+     * Joins the caller's trace; this unit gets its own span id and the caller's span as parent.
      */
     public function continueTrace(TraceParent $received, ?TraceState $state = null): static;
 
@@ -68,7 +71,10 @@ interface RequestIdServiceInterface extends ResetInterface
     public function getTraceState(): ?TraceState;
 
     /**
-     * This unit's trace and flags with a new span id: one per outgoing request or message.
+     * This unit's span, sent as the parent of an outgoing request or message: the receiver's parent span id
+     * is then a span id this unit logs.
+     *
+     * @return TraceParent the same span as getTraceParent(), not a new one
      */
     public function createOutgoingTraceParent(): TraceParent;
 }

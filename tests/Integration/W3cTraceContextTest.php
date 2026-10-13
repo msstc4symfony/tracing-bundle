@@ -143,6 +143,7 @@ final class W3cTraceContextTest extends KernelTestCase
         $extra = $handler->getRecords()[0]->extra;
         self::assertSame(self::TRACE_ID, $extra['trace_id'] ?? null);
         self::assertSame($this->storage()->getTraceParent()->parentId, $extra['span_id'] ?? null);
+        self::assertSame('00f067aa0ba902b7', $extra['parent_span_id'] ?? null);
     }
 
     public function testSentryEventsAreTaggedWithTheW3cTrace(): void
@@ -178,7 +179,7 @@ final class W3cTraceContextTest extends KernelTestCase
         $stamped = TraceParent::fromHeader($stamp->traceParent);
         self::assertInstanceOf(TraceParent::class, $stamped);
         self::assertSame(self::TRACE_ID, $stamped->traceId);
-        self::assertNotSame($storage->getTraceParent()->parentId, $stamped->parentId);
+        self::assertSame($storage->getTraceParent()->parentId, $stamped->parentId);
     }
 
     public function testConsumerContinuesTheStampedTraceAndTheNextMessageStartsAnother(): void

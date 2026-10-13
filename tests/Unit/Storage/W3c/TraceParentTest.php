@@ -114,6 +114,15 @@ final class TraceParentTest extends TestCase
         self::assertNotSame($child->parentId, $parent->child()->parentId);
     }
 
+    public function testRecognisesW3cSpanIds(): void
+    {
+        self::assertTrue(TraceParent::isSpanId(self::PARENT_ID));
+        self::assertTrue(TraceParent::isSpanId(TraceParent::start()->parentId));
+        foreach (['', '0000000000000000', 'B7AD6B7169203331', 'b7ad6b716920333', 'b7ad6b71692033310', 'b7ad6b716920333g', "b7ad6b7169203331\n", "\nb7ad6b7169203331"] as $invalid) {
+            self::assertFalse(TraceParent::isSpanId($invalid), $invalid);
+        }
+    }
+
     public function testTraceIdAsRequestIdIsTheUuidSpellingOfTheTraceId(): void
     {
         $traceParent = TraceParent::fromHeader('00-' . self::TRACE_ID . '-' . self::PARENT_ID . '-01');

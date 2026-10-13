@@ -58,6 +58,8 @@ final class MessageBusTraceTest extends TestCase
     /** @var array<string, array{?string, string}> */
     private array $seenW3c = [];
 
+    private ?string $seenParentSpanId = null;
+
     protected function setUp(): void
     {
         if (!class_exists(MessageBus::class)) {
@@ -90,10 +92,21 @@ final class MessageBusTraceTest extends TestCase
 
         [$parentId, $traceId] = $this->seenW3c[SyncMessage::class] ?? [null, null];
         self::assertSame($own->traceId, $traceId);
-        self::assertNotNull($parentId);
-        self::assertNotSame($own->parentId, $parentId);
+        self::assertSame($own->parentId, $parentId);
         self::assertSame($own, $this->storage->getTraceParent());
         self::assertNull($this->storage->getRemoteTraceParent());
+    }
+
+    public function testSyncMessageRunsAsAChildOfTheCallerAndTheCallersParentComesBack(): void
+    {
+        $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
+        self::assertInstanceOf(TraceParent::class, $received);
+        $own = $this->storage->continueTrace($received)->getTraceParent();
+
+        $this->bus()->dispatch(new SyncMessage());
+
+        self::assertSame($own->parentId, $this->seenParentSpanId);
+        self::assertSame('00f067aa0ba902b7', $this->storage->snapshot()->parentSpanId);
     }
 
     public function testSyncTransportKeepsTheCallersTraceWhenMessagesAreNotStamped(): void
@@ -158,6 +171,7 @@ final class MessageBusTraceTest extends TestCase
             SyncMessage::class => [function (): void {
                 $this->seen[SyncMessage::class] = [$this->storage->getRequestId(), $this->storage->getRequestFrom()];
                 $this->seenW3c[SyncMessage::class] = [$this->storage->getRemoteTraceParent()?->parentId, $this->storage->getTraceParent()->traceId];
+                $this->seenParentSpanId = $this->storage->snapshot()->parentSpanId;
             }],
             ConsumedMessage::class => [function () use ($busProxy): void {
                 $busProxy->dispatch(new DeferredMessage(), [new DispatchAfterCurrentBusStamp()]);

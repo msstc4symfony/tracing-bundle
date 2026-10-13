@@ -64,10 +64,10 @@ final class StampMiddlewareTest extends TestCase
         self::assertInstanceOf(TraceParent::class, $sent);
         self::assertSame($received->traceId, $sent->traceId);
         self::assertSame(0, $sent->flags);
-        self::assertNotContains($sent->parentId, [$received->parentId, $this->storage->getTraceParent()->parentId]);
+        self::assertSame($this->storage->getTraceParent()->parentId, $sent->parentId);
     }
 
-    public function testOutgoingStartsANewSpanPerMessage(): void
+    public function testOutgoingSendsTheSameSpanWithEveryMessage(): void
     {
         $middleware = new OutgoingStampMiddleware($this->storage);
 
@@ -81,8 +81,8 @@ final class StampMiddlewareTest extends TestCase
         $secondParent = TraceParent::fromHeader($second->traceParent);
         self::assertInstanceOf(TraceParent::class, $firstParent);
         self::assertInstanceOf(TraceParent::class, $secondParent);
-        self::assertSame($firstParent->traceId, $secondParent->traceId);
-        self::assertNotSame($firstParent->parentId, $secondParent->parentId);
+        self::assertSame($firstParent->toHeader(), $secondParent->toHeader());
+        self::assertSame($this->storage->getTraceParent()->parentId, $firstParent->parentId);
     }
 
     public function testOutgoingKeepsAnExistingTraceStamp(): void

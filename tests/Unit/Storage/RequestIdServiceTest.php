@@ -85,20 +85,23 @@ final class RequestIdServiceTest extends TestCase
         self::assertSame($received->traceId, $service->getTraceParent()->traceId);
         self::assertSame($received->flags, $service->getTraceParent()->flags);
         self::assertNotSame($received->parentId, $service->getTraceParent()->parentId);
+        self::assertSame($received->parentId, $service->snapshot()->parentSpanId);
     }
 
-    public function testOutgoingTraceParentIsANewChildOfThisUnitEveryTime(): void
+    public function testAStartedTraceHasNoParentSpan(): void
+    {
+        $service = new RequestIdService('shop', 'api');
+        $service->getTraceParent();
+
+        self::assertNull($service->snapshot()->parentSpanId);
+    }
+
+    public function testOutgoingTraceParentIsThisUnitsOwnSpan(): void
     {
         $service = new RequestIdService('shop', 'api');
         $service->continueTrace($this->traceParent());
 
-        $first = $service->createOutgoingTraceParent();
-        $second = $service->createOutgoingTraceParent();
-
-        self::assertSame($service->getTraceParent()->traceId, $first->traceId);
-        self::assertSame($service->getTraceParent()->traceId, $second->traceId);
-        self::assertNotSame($first->parentId, $second->parentId);
-        self::assertNotSame($service->getTraceParent()->parentId, $first->parentId);
+        self::assertSame($service->getTraceParent(), $service->createOutgoingTraceParent());
     }
 
     public function testResetForgetsTheW3cTrace(): void
@@ -111,6 +114,7 @@ final class RequestIdServiceTest extends TestCase
 
         self::assertNull($service->getRemoteTraceParent());
         self::assertNull($service->getTraceState());
+        self::assertNull($service->snapshot()->parentSpanId);
         self::assertNotSame($received->traceId, $service->getTraceParent()->traceId);
     }
 
@@ -130,6 +134,7 @@ final class RequestIdServiceTest extends TestCase
         self::assertSame($received, $service->getRemoteTraceParent());
         self::assertSame($state, $service->getTraceState());
         self::assertSame($own, $service->getTraceParent());
+        self::assertSame($received->parentId, $service->snapshot()->parentSpanId);
     }
 
     public function testRestoringASnapshotWithoutATraceStartsAFreshOne(): void
@@ -142,7 +147,28 @@ final class RequestIdServiceTest extends TestCase
         $service->restore(new TraceContext('runtime', 'abc', 'billing:api', null, null, null));
 
         self::assertNull($service->getRemoteTraceParent());
+        self::assertNull($service->snapshot()->parentSpanId);
         self::assertNotSame($traceId, $service->getTraceParent()->traceId);
+    }
+
+    public function testRestoreDropsAParentSpanWithoutATrace(): void
+    {
+        $service = new RequestIdService('shop', 'api');
+
+        $service->restore(new TraceContext('runtime', 'abc', 'billing:api', null, null, null, 'b7ad6b7169203331'));
+
+        self::assertNull($service->snapshot()->parentSpanId);
+    }
+
+    public function testRestoreSetsTheParentSpanOfTheContext(): void
+    {
+        $service = new RequestIdService('shop', 'api');
+        $own = TraceParent::start();
+
+        $service->restore(new TraceContext('runtime', 'abc', 'billing:api', $own, null, null, 'b7ad6b7169203331'));
+
+        self::assertSame($own, $service->getTraceParent());
+        self::assertSame('b7ad6b7169203331', $service->snapshot()->parentSpanId);
     }
 
     private function traceParent(): TraceParent
