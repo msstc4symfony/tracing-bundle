@@ -18,14 +18,14 @@ use Symfony\Component\HttpClient\DecoratorTrait;
  */
 final class HttpClientPass implements CompilerPassInterface
 {
-    public const string TRANSPORT_ID = 'http_client.transport';
+    public const TRANSPORT_ID = 'http_client.transport';
 
-    public const string DECORATOR_ID = 'msstc4symfony_tracing.http_client.transport';
+    public const DECORATOR_ID = 'msstc4symfony_tracing.http_client.transport';
 
     // A lower priority is applied later, i.e. further out: outside FrameworkBundle's
     // mock_response_factory decorator (-10), so functional tests with a mocked transport
     // still get the headers.
-    private const int DECORATION_PRIORITY = -15;
+    private const DECORATION_PRIORITY = -15;
 
     #[Override]
     public function process(ContainerBuilder $container): void

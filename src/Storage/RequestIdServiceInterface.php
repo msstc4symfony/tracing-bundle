@@ -17,7 +17,7 @@ use Symfony\Contracts\Service\ResetInterface;
  */
 interface RequestIdServiceInterface extends ResetInterface
 {
-    public const string UNKNOWN_APPLICATION = 'unknown';
+    public const UNKNOWN_APPLICATION = 'unknown';
 
     public function initRuntimeId(): static;
 

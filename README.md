@@ -20,9 +20,12 @@ every service it touches:
 
 ## Compatibility
 
-| Bundle | PHP  | Symfony       |
-|--------|------|---------------|
-| 1.x    | 8.4+ | 7.4, 8.x      |
+| Bundle  | PHP  | Symfony       |
+|---------|------|---------------|
+| 1.3+    | 8.2+ | 7.4, 8.x      |
+| 1.0–1.2 | 8.4+ | 7.4, 8.x      |
+
+Symfony 8.x needs PHP 8.4; on PHP 8.2 and 8.3 Composer installs Symfony 7.4.
 
 ## Installation
 

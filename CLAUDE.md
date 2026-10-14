@@ -6,7 +6,7 @@ Guidance for Claude Code in this repository. Deep references live under `.claude
 
 Symfony bundle (`msstc4symfony/tracing-bundle`, namespace `Msstc4Symfony\TracingBundle`)
 that propagates a trace context — request id, caller (`request from`) and runtime id —
-across HTTP (in and out), Messenger, Monolog and Sentry. PHP >= 8.4, Symfony 7.4 / 8.x.
+across HTTP (in and out), Messenger, Monolog and Sentry. PHP >= 8.2, Symfony 7.4 / 8.x.
 Library code only.
 
 ## Common commands

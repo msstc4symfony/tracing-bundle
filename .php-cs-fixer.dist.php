@@ -9,6 +9,7 @@ $finder = (new PhpCsFixer\Finder())
 return (new PhpCsFixer\Config())
     ->setRules([
         '@Symfony' => true,
+        'new_expression_parentheses' => ['use_parentheses' => true],
         'phpdoc_align' => [
             'align' => 'left',
         ],

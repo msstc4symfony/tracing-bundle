@@ -68,7 +68,7 @@ PHPStan гоняется на Guzzle 8 (CI-профиль, highest): `method_exi
 
 ## prefer-lowest: risky «did not remove its own exception handlers» (2026-10-02 UTC)
 
-Ячейка `--prefer-lowest` (PHP 8.4, Symfony 7.4.*) давала risky в kernel-тестах
+Ячейка `--prefer-lowest` (PHP 8.4, Symfony 7.4.*; с v1.3.0 — PHP 8.2, `conflict` по-прежнему нужен) давала risky в kernel-тестах
 (`failOnRisky`). Виновник — транзитивный `symfony/error-handler` ниже 7.4.17 (на 8.x — ниже 8.1.5):
 `ErrorHandler::register()` при уже чужом error handler оставлял свой exception handler
 (исправлено в 7.4.17 / 8.1.5: `restore_exception_handler()` при `!$handlerIsRegistered &&
@@ -203,3 +203,11 @@ priority 100000).
   добавить `getParentSpanId()` в `RequestIdServiceInterface` и читать напрямую.
 - Сторонняя реализация с невалидным span id в `snapshot()` уронит процессор на каждой записи — требование
   формата записано в CHANGELOG (Upgrading) и в `@throws` конструктора `TraceContext`.
+- **Код должен разбираться на PHP 8.2** (с 2026-10-14 UTC, bundle-standard v2.0.0, профиль `php82`): без
+  типизированных констант (`const string X`), без `new readonly class` (оба — 8.3) и без `new X()->m()` /
+  `new X()(...)` (8.4) — только `(new X())->m()`. PHPStan (`phpVersion.min: 80200`) ловит типизированные
+  константы; остальное ловят только `php -l` в job «minimal» (PHP 8.2) и ячейки PHPUnit на 8.2. Шаблоны Rector
+  (`withPhpVersion(PHP_82)`) и CS-Fixer (`new_expression_parentheses`) синтаксис обратно не поднимают.
+  `#[Override]` (8.3) допустим: на 8.2 атрибут не инстанцируется. `array_any/all/find` (8.4) — только с
+  `symfony/polyfill-php84` в `require`. Symfony 8 ставится только на PHP 8.4+.
+  В tracing-bundle `array_find` только в тесте → `symfony/polyfill-php84` в `require-dev`.

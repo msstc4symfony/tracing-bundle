@@ -7,6 +7,7 @@ use Rector\CodingStyle\Rector\PostInc\PostIncDecToPreIncDecRector;
 use Rector\CodingStyle\Rector\Stmt\NewlineAfterStatementRector;
 use Rector\Composer\InstalledPackageResolver;
 use Rector\Config\RectorConfig;
+use Rector\ValueObject\PhpVersion;
 use Rector\Symfony\Configs\Rector\Closure\FromServicePublicToDefaultsPublicRector;
 use Rector\Symfony\Configs\Rector\Closure\ServiceSettersToSettersAutodiscoveryRector;
 use Rector\Php80\Rector\Class_\ClassPropertyAssignToConstructorPromotionRector;
@@ -68,7 +69,9 @@ return static function (RectorConfig $rectorConfig) use ($writeLowestPackagesMan
             __DIR__ . '/tests',
         ])
         ->withoutParallel()
-        ->withPhpSets(php84: true)
+        // The package runs on PHP 8.2: no rule may raise the code above it.
+        ->withPhpVersion(PhpVersion::PHP_82)
+        ->withPhpSets(php82: true)
         ->withComposerBased(doctrine: true, phpunit: true, symfony: true)
         ->withAttributesSets(symfony: true, doctrine: true, mongoDb: true, phpunit: true)
         ->withPreparedSets(

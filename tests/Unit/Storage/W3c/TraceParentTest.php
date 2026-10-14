@@ -16,9 +16,9 @@ use Symfony\Component\Uid\Uuid;
 #[CoversClass(TraceParent::class)]
 final class TraceParentTest extends TestCase
 {
-    private const string TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+    private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
 
-    private const string PARENT_ID = '00f067aa0ba902b7';
+    private const PARENT_ID = '00f067aa0ba902b7';
 
     public function testParsesTheSpecExample(): void
     {

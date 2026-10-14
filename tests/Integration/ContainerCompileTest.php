@@ -42,14 +42,14 @@ final class ContainerCompileTest extends KernelTestCase
     #[Override]
     protected function setUp(): void
     {
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
     #[Override]
     protected function tearDown(): void
     {
         parent::tearDown();
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
     #[Override]
@@ -209,7 +209,7 @@ final class ContainerCompileTest extends KernelTestCase
         }
 
         self::assertInstanceOf(WorkerTraceSubscriber::class, $subscriber);
-        $middleware = new ReflectionProperty($subscriber, 'middleware')->getValue($subscriber);
+        $middleware = (new ReflectionProperty($subscriber, 'middleware'))->getValue($subscriber);
         foreach (['test.bus.commands', 'test.bus.events'] as $busId) {
             self::assertContains($middleware, $this->middlewareOf($busId), $busId);
         }
@@ -229,7 +229,7 @@ final class ContainerCompileTest extends KernelTestCase
     {
         $bus = self::getContainer()->get($busId);
         self::assertInstanceOf(MessageBus::class, $bus);
-        $aggregate = new ReflectionProperty($bus, 'middlewareAggregate')->getValue($bus);
+        $aggregate = (new ReflectionProperty($bus, 'middlewareAggregate'))->getValue($bus);
         self::assertInstanceOf(IteratorAggregate::class, $aggregate);
 
         $middleware = [];

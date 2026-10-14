@@ -25,7 +25,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
 #[UsesClass(TraceState::class)]
 final class HTTPRequestListenerTest extends TestCase
 {
-    private const string TRACE_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    private const TRACE_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
 
     private RequestIdService $storage;
 

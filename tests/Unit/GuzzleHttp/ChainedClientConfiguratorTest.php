@@ -41,7 +41,7 @@ final class ChainedClientConfiguratorTest extends TestCase
                 $client->send(new Request('GET', 'https://example.com'));
                 $tracedWhileConfiguring = $transport->getLastRequest()?->hasHeader('request-id');
             },
-            new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc')),
+            new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc')),
         );
         $chain($client);
         $client->request('GET', 'https://example.com');

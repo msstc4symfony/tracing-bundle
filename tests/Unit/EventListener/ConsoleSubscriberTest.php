@@ -17,10 +17,10 @@ final class ConsoleSubscriberTest extends TestCase
 {
     public function testEveryCommandStartsItsOwnTrace(): void
     {
-        $storage = new RequestIdService('shop', 'cli')->setRequestId('previous');
+        $storage = (new RequestIdService('shop', 'cli'))->setRequestId('previous');
         $runtimeId = $storage->getRuntimeId();
 
-        new ConsoleSubscriber($storage)->onCommand();
+        (new ConsoleSubscriber($storage))->onCommand();
 
         self::assertNotSame('previous', $storage->getRequestId());
         self::assertNotSame($runtimeId, $storage->getRuntimeId());

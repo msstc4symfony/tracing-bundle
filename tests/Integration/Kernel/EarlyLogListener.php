@@ -11,7 +11,7 @@ use Psr\Log\LoggerInterface;
  */
 final readonly class EarlyLogListener
 {
-    public const string MESSAGE = 'before the tracing listener';
+    public const MESSAGE = 'before the tracing listener';
 
     public function __construct(
         private LoggerInterface $logger,

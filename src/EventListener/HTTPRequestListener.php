@@ -17,13 +17,13 @@ use Symfony\Contracts\Service\ResetInterface;
 
 final class HTTPRequestListener implements EventSubscriberInterface, ResetInterface
 {
-    public const string REQUEST_ID_HEADER = 'request-id';
+    public const REQUEST_ID_HEADER = 'request-id';
 
-    public const string REQUEST_FROM_HEADER = 'request-from';
+    public const REQUEST_FROM_HEADER = 'request-from';
 
-    public const string TRACEPARENT_HEADER = 'traceparent';
+    public const TRACEPARENT_HEADER = 'traceparent';
 
-    public const string TRACESTATE_HEADER = 'tracestate';
+    public const TRACESTATE_HEADER = 'tracestate';
 
     /**
      * Whether kernel.reset (or a fresh container) opened the current unit after the previous main

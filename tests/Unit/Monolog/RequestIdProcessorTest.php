@@ -23,10 +23,10 @@ final class RequestIdProcessorTest extends TestCase
 {
     public function testAddsTheTraceAndKeepsExistingExtra(): void
     {
-        $storage = new RequestIdService('shop', 'api')->setRequestId('abc')->setRequestFrom('billing:worker');
+        $storage = (new RequestIdService('shop', 'api'))->setRequestId('abc')->setRequestFrom('billing:worker');
         $record = new LogRecord(new DateTimeImmutable(), 'app', Level::Info, 'hello', extra: ['user' => 7]);
 
-        $extra = new RequestIdProcessor($storage)($record)->extra;
+        $extra = (new RequestIdProcessor($storage))($record)->extra;
 
         self::assertSame(
             [
@@ -46,10 +46,10 @@ final class RequestIdProcessorTest extends TestCase
     {
         $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
         self::assertInstanceOf(TraceParent::class, $received);
-        $storage = new RequestIdService('shop', 'api')->continueTrace($received);
+        $storage = (new RequestIdService('shop', 'api'))->continueTrace($received);
         $record = new LogRecord(new DateTimeImmutable(), 'app', Level::Info, 'hello');
 
-        $extra = new RequestIdProcessor($storage)($record)->extra;
+        $extra = (new RequestIdProcessor($storage))($record)->extra;
 
         self::assertSame('00f067aa0ba902b7', $extra['parent_span_id'] ?? null);
     }

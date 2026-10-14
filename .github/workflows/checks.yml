@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   standard:
-    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v1.0.0
+    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v2.0.1
     with:
       slug: msstc4symfony/tracing-bundle
       extensions: 'mbstring, xml, ctype, iconv, intl, json'

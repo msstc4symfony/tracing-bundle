@@ -6,7 +6,7 @@
 | ------- | ------------------ |
 | 1.x     | :white_check_mark: |
 
-Runtime requirements: PHP >= 8.4, Symfony 7.4 / 8.x.
+Runtime requirements: PHP >= 8.2, Symfony 7.4 / 8.x.
 
 ## Reporting a Vulnerability
 

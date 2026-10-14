@@ -34,7 +34,7 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 #[UsesClass(TraceState::class)]
 final class UnitBoundaryTest extends TestCase
 {
-    private const string TRACE_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    private const TRACE_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
 
     private RequestIdService $storage;
 
@@ -84,9 +84,9 @@ final class UnitBoundaryTest extends TestCase
      */
     private function stack(Closure $handler): StackMiddleware
     {
-        return new StackMiddleware(new readonly class($handler) implements MiddlewareInterface {
+        return new StackMiddleware(new class($handler) implements MiddlewareInterface {
             /** @param Closure(): void $handler */
-            public function __construct(private Closure $handler)
+            public function __construct(private readonly Closure $handler)
             {
             }
 

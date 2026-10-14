@@ -28,7 +28,7 @@ use Psr\Http\Message\RequestInterface;
  */
 final readonly class RequestIdGuzzleHandler
 {
-    public const string MIDDLEWARE_NAME = 'msstc4symfony_tracing';
+    public const MIDDLEWARE_NAME = 'msstc4symfony_tracing';
 
     public function __construct(
         private RequestIdServiceInterface $requestIdService,

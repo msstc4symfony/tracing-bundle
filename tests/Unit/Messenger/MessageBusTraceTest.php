@@ -141,7 +141,7 @@ final class MessageBusTraceTest extends TestCase
         self::assertSame('t1', $deferred->last(TraceStamp::class)?->requestId);
         self::assertSame('t1', $this->storage->getRequestId());
 
-        new WorkerTraceSubscriber($this->incoming)->closeUnit();
+        (new WorkerTraceSubscriber($this->incoming))->closeUnit();
 
         self::assertNotSame('t1', $this->storage->getRequestId());
     }

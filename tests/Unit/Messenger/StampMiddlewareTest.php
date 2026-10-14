@@ -31,9 +31,9 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 #[UsesClass(TraceState::class)]
 final class StampMiddlewareTest extends TestCase
 {
-    private const string TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+    private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
 
-    private const string TRACE_PARENT = '00-' . self::TRACE_ID . '-00f067aa0ba902b7-00';
+    private const TRACE_PARENT = '00-' . self::TRACE_ID . '-00f067aa0ba902b7-00';
 
     private RequestIdService $storage;
 
@@ -51,7 +51,7 @@ final class StampMiddlewareTest extends TestCase
         $received = $this->receivedTraceParent();
         $this->storage->setRequestId('abc')->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
 
-        $envelope = new OutgoingStampMiddleware($this->storage)->handle(new Envelope(new stdClass()), new StackMiddleware());
+        $envelope = (new OutgoingStampMiddleware($this->storage))->handle(new Envelope(new stdClass()), new StackMiddleware());
 
         $stamps = $envelope->all(TraceStamp::class);
         self::assertCount(1, $stamps);
@@ -89,7 +89,7 @@ final class StampMiddlewareTest extends TestCase
     {
         $stamp = new TraceStamp('origin', 'billing:api', self::TRACE_PARENT);
 
-        $envelope = new OutgoingStampMiddleware($this->storage)->handle(new Envelope(new stdClass(), [$stamp]), new StackMiddleware());
+        $envelope = (new OutgoingStampMiddleware($this->storage))->handle(new Envelope(new stdClass(), [$stamp]), new StackMiddleware());
 
         self::assertSame([$stamp], $envelope->all(TraceStamp::class));
     }
@@ -98,7 +98,7 @@ final class StampMiddlewareTest extends TestCase
     {
         $received = new ReceivedStamp('async');
 
-        $envelope = new OutgoingStampMiddleware($this->storage)->handle(new Envelope(new stdClass(), [$received]), new StackMiddleware());
+        $envelope = (new OutgoingStampMiddleware($this->storage))->handle(new Envelope(new stdClass(), [$received]), new StackMiddleware());
 
         self::assertSame([], $envelope->all(TraceStamp::class));
         self::assertSame([$received], $envelope->all(ReceivedStamp::class));
@@ -121,7 +121,7 @@ final class StampMiddlewareTest extends TestCase
             new TraceStamp('abc', 'billing:api', self::TRACE_PARENT, 'rojo=1'),
         ]);
 
-        new IncomingStampMiddleware($this->storage)->handle($envelope, $stack);
+        (new IncomingStampMiddleware($this->storage))->handle($envelope, $stack);
 
         self::assertSame(['abc', 'billing:api', self::TRACE_PARENT, self::TRACE_ID, 'rojo=1'], $seen);
         // Kept for the worker's ack logs; WorkerTraceSubscriber clears it.
@@ -133,7 +133,7 @@ final class StampMiddlewareTest extends TestCase
         $this->storage->setRequestId('http-request');
         $traceId = $this->storage->getTraceParent()->traceId;
 
-        new IncomingStampMiddleware($this->storage)->handle(
+        (new IncomingStampMiddleware($this->storage))->handle(
             new Envelope(new stdClass(), [new TraceStamp('abc', 'billing:api', self::TRACE_PARENT)]),
             new StackMiddleware(),
         );
@@ -146,7 +146,7 @@ final class StampMiddlewareTest extends TestCase
     {
         $this->storage->continueTrace($this->receivedTraceParent());
 
-        new IncomingStampMiddleware($this->storage)->handle(new Envelope(new stdClass(), [new ReceivedStamp('async')]), new StackMiddleware());
+        (new IncomingStampMiddleware($this->storage))->handle(new Envelope(new stdClass(), [new ReceivedStamp('async')]), new StackMiddleware());
 
         $traceParent = $this->storage->getTraceParent();
         self::assertNotSame(self::TRACE_ID, $traceParent->traceId);
@@ -162,7 +162,7 @@ final class StampMiddlewareTest extends TestCase
             new TraceStamp('abc', 'billing:api', '00-00000000000000000000000000000000-00f067aa0ba902b7-01', 'rojo=1'),
         ]);
 
-        new IncomingStampMiddleware($this->storage)->handle($envelope, new StackMiddleware());
+        (new IncomingStampMiddleware($this->storage))->handle($envelope, new StackMiddleware());
 
         self::assertNull($this->storage->getRemoteTraceParent());
         self::assertNull($this->storage->getTraceState());

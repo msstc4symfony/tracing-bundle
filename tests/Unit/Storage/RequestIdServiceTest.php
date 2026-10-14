@@ -32,7 +32,7 @@ final class RequestIdServiceTest extends TestCase
 
     public function testKeepsReceivedContext(): void
     {
-        $service = new RequestIdService('shop', 'api')->setRequestId('abc')->setRequestFrom('billing:worker');
+        $service = (new RequestIdService('shop', 'api'))->setRequestId('abc')->setRequestFrom('billing:worker');
 
         self::assertSame('abc', $service->getRequestId());
         self::assertSame('billing:worker', $service->getRequestFrom());
@@ -41,7 +41,7 @@ final class RequestIdServiceTest extends TestCase
 
     public function testResetStartsANewRuntimeAndForgetsTheRequest(): void
     {
-        $service = new RequestIdService('shop', 'api')->setRequestId('abc');
+        $service = (new RequestIdService('shop', 'api'))->setRequestId('abc');
         $runtimeId = $service->getRuntimeId();
 
         $service->reset();
@@ -52,7 +52,7 @@ final class RequestIdServiceTest extends TestCase
 
     public function testGenerateReplacesTheContext(): void
     {
-        $service = new RequestIdService('shop', 'api')->setRequestId('abc')->setRequestFrom('other');
+        $service = (new RequestIdService('shop', 'api'))->setRequestId('abc')->setRequestFrom('other');
 
         $service->generate();
 

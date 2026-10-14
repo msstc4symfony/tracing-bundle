@@ -37,16 +37,16 @@ use Symfony\Contracts\Service\ResetInterface;
  */
 final class W3cTraceContextTest extends KernelTestCase
 {
-    private const string TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+    private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
 
-    private const string TRACE_PARENT = '00-' . self::TRACE_ID . '-00f067aa0ba902b7-01';
+    private const TRACE_PARENT = '00-' . self::TRACE_ID . '-00f067aa0ba902b7-01';
 
-    private const array NAME_VARIABLES = ['APPLICATION_NAME', 'COMPONENT_NAME'];
+    private const NAME_VARIABLES = ['APPLICATION_NAME', 'COMPONENT_NAME'];
 
     #[Override]
     protected function setUp(): void
     {
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
     #[Override]
@@ -58,7 +58,7 @@ final class W3cTraceContextTest extends KernelTestCase
             SentrySdk::init();
         }
 
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
     #[Override]
@@ -294,7 +294,7 @@ final class W3cTraceContextTest extends KernelTestCase
             ClientBuilder::create(['integrations' => [$integration], 'default_integrations' => false])->getClient(),
         );
 
-        $event = new Scope()->applyToEvent(Event::createEvent());
+        $event = (new Scope())->applyToEvent(Event::createEvent());
         self::assertInstanceOf(Event::class, $event);
 
         return $event->getTags();

@@ -24,7 +24,7 @@ use Sentry\State\Scope;
 #[UsesClass(TraceContext::class)]
 final class TracingIntegrationTest extends TestCase
 {
-    private const string TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+    private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
 
     #[Override]
     protected function setUp(): void
@@ -45,7 +45,7 @@ final class TracingIntegrationTest extends TestCase
 
     public function testAddsTheTraceToSentryEvents(): void
     {
-        $storage = new RequestIdService('shop', 'api')->setRequestId('abc')->setRequestFrom('billing:api');
+        $storage = (new RequestIdService('shop', 'api'))->setRequestId('abc')->setRequestFrom('billing:api');
 
         $event = $this->captureWith(new TracingIntegration($storage), new Scope());
 

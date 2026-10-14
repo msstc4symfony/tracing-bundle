@@ -23,7 +23,7 @@ final class TraceContextTest extends TestCase
     {
         self::assertSame('b7ad6b7169203331', $this->context('b7ad6b7169203331')->parentSpanId);
         self::assertNull($this->context(null)->parentSpanId);
-        self::assertNull(new TraceContext('runtime', null, null, null, null, null)->parentSpanId);
+        self::assertNull((new TraceContext('runtime', null, null, null, null, null))->parentSpanId);
     }
 
     /**

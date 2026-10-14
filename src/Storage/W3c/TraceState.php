@@ -12,13 +12,13 @@ final readonly class TraceState
 {
     // The spec asks vendors to propagate at least this many characters; above it members are
     // dropped, large ones first, then from the end (the leftmost member is the most recent).
-    public const int MAX_LENGTH = 512;
+    public const MAX_LENGTH = 512;
 
-    public const int MAX_MEMBERS = 32;
+    public const MAX_MEMBERS = 32;
 
-    private const int LARGE_MEMBER = 128;
+    private const LARGE_MEMBER = 128;
 
-    private const string MEMBER = '~^(?<key>[a-z][a-z0-9_\-*/]{0,255}|[a-z0-9][a-z0-9_\-*/]{0,240}@[a-z][a-z0-9_\-*/]{0,13})=[\x20-\x2b\x2d-\x3c\x3e-\x7e]{0,255}[\x21-\x2b\x2d-\x3c\x3e-\x7e]$~D';
+    private const MEMBER = '~^(?<key>[a-z][a-z0-9_\-*/]{0,255}|[a-z0-9][a-z0-9_\-*/]{0,240}@[a-z][a-z0-9_\-*/]{0,13})=[\x20-\x2b\x2d-\x3c\x3e-\x7e]{0,255}[\x21-\x2b\x2d-\x3c\x3e-\x7e]$~D';
 
     /**
      * @param non-empty-string $value

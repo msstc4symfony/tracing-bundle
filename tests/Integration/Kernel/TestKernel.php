@@ -28,29 +28,29 @@ final class TestKernel extends Kernel
 {
     use MicroKernelTrait;
 
-    public const string GUZZLE_CLIENT = 'test.guzzle';
+    public const GUZZLE_CLIENT = 'test.guzzle';
 
-    public const string GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
+    public const GUZZLE_CHILD_CLIENT = 'test.guzzle.child';
 
-    public const string GUZZLE_CONSUMER = 'test.guzzle.consumer';
+    public const GUZZLE_CONSUMER = 'test.guzzle.consumer';
 
-    public const string GUZZLE_CONFIGURED_CLIENT = 'test.guzzle.configured';
+    public const GUZZLE_CONFIGURED_CLIENT = 'test.guzzle.configured';
 
-    public const string GUZZLE_STACK_CLIENT = 'test.guzzle.with_stack';
+    public const GUZZLE_STACK_CLIENT = 'test.guzzle.with_stack';
 
-    public const string GUZZLE_FACTORY_CLIENT = 'test.guzzle.factory';
+    public const GUZZLE_FACTORY_CLIENT = 'test.guzzle.factory';
 
-    public const string GUZZLE_FACTORY_CONFIGURED_CLIENT = 'test.guzzle.factory_configured';
+    public const GUZZLE_FACTORY_CONFIGURED_CLIENT = 'test.guzzle.factory_configured';
 
-    public const string SENTRY_INTEGRATION = 'test.sentry.integration';
+    public const SENTRY_INTEGRATION = 'test.sentry.integration';
 
-    public const string ENV_NAMED = 'named';
+    public const ENV_NAMED = 'named';
 
-    public const string ENV_LEGACY_W3C = 'legacy_w3c';
+    public const ENV_LEGACY_W3C = 'legacy_w3c';
 
-    public const string ENV_BOOL_NAME = 'bool_name';
+    public const ENV_BOOL_NAME = 'bool_name';
 
-    public const string ENV_INT_NAME = 'int_name';
+    public const ENV_INT_NAME = 'int_name';
 
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string

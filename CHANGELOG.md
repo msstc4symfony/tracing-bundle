@@ -4,6 +4,13 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [1.3.0] - 2026-10-14
+
+### Changed
+
+- Requires PHP 8.2 instead of 8.4 (Symfony 8 still needs PHP 8.4).
+- Class constants no longer declare a native type (PHP 8.2 has none); values are unchanged.
+
 ## [1.2.0] - 2026-10-13
 
 ### Added
@@ -63,6 +70,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[1.3.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.3.0
 [1.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.2.0
 [1.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.1.0
 [1.0.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.0.0

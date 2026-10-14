@@ -26,7 +26,7 @@ use Symfony\Component\DependencyInjection\Reference;
  */
 final class GuzzlePass implements CompilerPassInterface
 {
-    private const string UNREACHABLE_CLIENT_LOG = 'Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); '
+    private const UNREACHABLE_CLIENT_LOG = 'Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); '
         . 'create it with the handler returned by %s::decorateHandler().';
 
     #[Override]
@@ -84,7 +84,7 @@ final class GuzzlePass implements CompilerPassInterface
             return false;
         }
 
-        $config['handler'] = new Definition(HandlerStack::class, [$config['handler'] ?? null])
+        $config['handler'] = (new Definition(HandlerStack::class, [$config['handler'] ?? null]))
             ->setFactory([$tracing, 'decorateHandler'])
         ;
         $definition->setArgument(0, $config);

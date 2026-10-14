@@ -9,21 +9,21 @@ namespace Msstc4Symfony\TracingBundle\Storage\W3c;
  */
 final readonly class TraceParent
 {
-    public const int FLAG_SAMPLED = 0x01;
+    public const FLAG_SAMPLED = 0x01;
 
-    public const int FLAG_RANDOM = 0x02;
+    public const FLAG_RANDOM = 0x02;
 
     // Version 00 defines only these; the spec has vendors zero the rest.
-    private const int KNOWN_FLAGS = self::FLAG_SAMPLED | self::FLAG_RANDOM;
+    private const KNOWN_FLAGS = self::FLAG_SAMPLED | self::FLAG_RANDOM;
 
-    private const string VERSION = '00';
+    private const VERSION = '00';
 
-    private const string INVALID_TRACE_ID = '00000000000000000000000000000000';
+    private const INVALID_TRACE_ID = '00000000000000000000000000000000';
 
-    private const string INVALID_PARENT_ID = '0000000000000000';
+    private const INVALID_PARENT_ID = '0000000000000000';
 
     // Versions above 00 may append fields, each introduced by "-".
-    private const string PATTERN = '/^(?<version>[0-9a-f]{2})-(?<traceId>[0-9a-f]{32})-(?<parentId>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})(?<rest>-.*)?$/D';
+    private const PATTERN = '/^(?<version>[0-9a-f]{2})-(?<traceId>[0-9a-f]{32})-(?<parentId>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})(?<rest>-.*)?$/D';
 
     /**
      * @param non-empty-string $traceId 32 lowercase hex digits, not all zero

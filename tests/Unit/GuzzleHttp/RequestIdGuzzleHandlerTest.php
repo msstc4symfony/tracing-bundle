@@ -46,7 +46,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
 
     public function testAddsTheTraceHeadersOnce(): void
     {
-        $handler = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $handler = new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc'));
         $handler->addHandler($this->client);
         $handler->addHandler($this->client);
 
@@ -63,7 +63,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
 
     public function testKeepsAHeaderTheCallerSet(): void
     {
-        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler($this->client);
+        (new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')))->addHandler($this->client);
 
         $this->client->request('GET', 'https://example.com', ['headers' => ['request-id' => 'mine']]);
 
@@ -72,7 +72,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
 
     public function testKeepsARequestFromTheCallerSet(): void
     {
-        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->addHandler($this->client);
+        (new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc')))->addHandler($this->client);
 
         $this->client->request('GET', 'https://example.com', ['headers' => ['request-from' => 'gateway:edge']]);
 
@@ -86,7 +86,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
     {
         $client = new Client(['handler' => new MockHandler([new Response()])]);
 
-        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler($client);
+        (new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')))->addHandler($client);
 
         self::assertNotInstanceOf(HandlerStack::class, $client->getConfig('handler'));
     }
@@ -95,8 +95,8 @@ final class RequestIdGuzzleHandlerTest extends TestCase
     {
         $stack = HandlerStack::create($this->transport);
 
-        $decorated = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->decorateHandler($stack);
-        new Client(['handler' => $decorated])->request('GET', 'https://example.com');
+        $decorated = (new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc')))->decorateHandler($stack);
+        (new Client(['handler' => $decorated]))->request('GET', 'https://example.com');
 
         self::assertSame($stack, $decorated);
         self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
@@ -104,38 +104,38 @@ final class RequestIdGuzzleHandlerTest extends TestCase
 
     public function testDecoratesTheGivenHandlerStackOnce(): void
     {
-        $handler = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $handler = new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc'));
         $stack = HandlerStack::create($this->transport);
         $handler->decorateHandler($handler->decorateHandler($stack));
 
         self::assertSame(1, $this->tracingMiddlewareCount($stack));
-        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+        (new Client(['handler' => $stack]))->request('GET', 'https://example.com');
 
         self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
     }
 
     public function testCreatesTheDefaultStackWhenNoHandlerIsGiven(): void
     {
-        $stack = new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->decorateHandler();
+        $stack = (new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc')))->decorateHandler();
         self::assertInstanceOf(HandlerStack::class, $stack);
         $stack->setHandler($this->transport);
 
-        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+        (new Client(['handler' => $stack]))->request('GET', 'https://example.com');
 
         self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
     }
 
     public function testLeavesABareHandlerUnchanged(): void
     {
-        self::assertSame($this->transport, new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->decorateHandler($this->transport));
+        self::assertSame($this->transport, (new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')))->decorateHandler($this->transport));
     }
 
     public function testMiddlewareCanBePushedOntoAnyStack(): void
     {
         $stack = HandlerStack::create($this->transport);
-        $stack->push(new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')->setRequestId('abc'))->middleware());
+        $stack->push((new RequestIdGuzzleHandler((new RequestIdService('shop', 'api'))->setRequestId('abc')))->middleware());
 
-        new Client(['handler' => $stack])->request('GET', 'https://example.com');
+        (new Client(['handler' => $stack]))->request('GET', 'https://example.com');
 
         self::assertSame(['abc'], $this->transport->getLastRequest()?->getHeader('request-id'));
     }
@@ -149,13 +149,13 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('decorateHandler()');
 
-        new RequestIdGuzzleHandler(new RequestIdService('shop', 'api'))->addHandler(new ClientWithoutConfig());
+        (new RequestIdGuzzleHandler(new RequestIdService('shop', 'api')))->addHandler(new ClientWithoutConfig());
     }
 
     public function testSendsTheW3cTraceWithThisUnitsSpan(): void
     {
         $storage = $this->continuedTrace();
-        new RequestIdGuzzleHandler($storage)->addHandler($this->client);
+        (new RequestIdGuzzleHandler($storage))->addHandler($this->client);
 
         $this->client->request('GET', 'https://example.com');
         $first = TraceParent::fromHeader($this->transport->getLastRequest()?->getHeaderLine('traceparent') ?? '');
@@ -175,7 +175,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
     public function testKeepsATraceParentTheCallerSet(): void
     {
         $storage = $this->continuedTrace();
-        new RequestIdGuzzleHandler($storage)->addHandler($this->client);
+        (new RequestIdGuzzleHandler($storage))->addHandler($this->client);
 
         $this->client->request('GET', 'https://example.com', ['headers' => ['traceparent' => 'mine']]);
 
@@ -188,7 +188,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
     public function testKeepsATraceStateTheCallerSet(): void
     {
         $storage = $this->continuedTrace();
-        new RequestIdGuzzleHandler($storage)->addHandler($this->client);
+        (new RequestIdGuzzleHandler($storage))->addHandler($this->client);
 
         $this->client->request('GET', 'https://example.com', ['headers' => ['tracestate' => 'mine=1']]);
 
@@ -205,7 +205,7 @@ final class RequestIdGuzzleHandlerTest extends TestCase
      */
     private function tracingMiddlewareCount(HandlerStack $stack): int
     {
-        $entries = new ReflectionProperty(HandlerStack::class, 'stack')->getValue($stack);
+        $entries = (new ReflectionProperty(HandlerStack::class, 'stack'))->getValue($stack);
         self::assertIsArray($entries);
 
         return count(array_filter($entries, static fn (mixed $entry): bool => is_array($entry) && ($entry[1] ?? null) === RequestIdGuzzleHandler::MIDDLEWARE_NAME));
@@ -216,6 +216,6 @@ final class RequestIdGuzzleHandlerTest extends TestCase
         $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00');
         self::assertInstanceOf(TraceParent::class, $received);
 
-        return new RequestIdService('shop', 'api')->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
+        return (new RequestIdService('shop', 'api'))->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
     }
 }

@@ -42,7 +42,7 @@ final class HttpClientDecoratorTest extends TestCase
 
     public function testAddsTheTraceHeaders(): void
     {
-        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $decorator = new HttpClientDecorator($this->inner, (new RequestIdService('shop', 'api'))->setRequestId('abc'));
 
         $decorator->request('GET', 'https://example.com')->getStatusCode();
 
@@ -56,7 +56,7 @@ final class HttpClientDecoratorTest extends TestCase
     #[DataProvider('provideCallerHeaders')]
     public function testKeepsAHeaderTheCallerSet(array $headers): void
     {
-        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $decorator = new HttpClientDecorator($this->inner, (new RequestIdService('shop', 'api'))->setRequestId('abc'));
 
         $decorator->request('GET', 'https://example.com', ['headers' => $headers])->getStatusCode();
 
@@ -74,7 +74,7 @@ final class HttpClientDecoratorTest extends TestCase
 
     public function testKeepsARequestFromTheCallerSet(): void
     {
-        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $decorator = new HttpClientDecorator($this->inner, (new RequestIdService('shop', 'api'))->setRequestId('abc'));
 
         $decorator->request('GET', 'https://example.com', ['headers' => ['Request-From: gateway:edge']])->getStatusCode();
 
@@ -84,7 +84,7 @@ final class HttpClientDecoratorTest extends TestCase
 
     public function testKeepsCallerHeadersGivenAsTraversable(): void
     {
-        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $decorator = new HttpClientDecorator($this->inner, (new RequestIdService('shop', 'api'))->setRequestId('abc'));
 
         $decorator->request('GET', 'https://example.com', ['headers' => new ArrayIterator(['Authorization' => 'Bearer x'])])->getStatusCode();
 
@@ -94,7 +94,7 @@ final class HttpClientDecoratorTest extends TestCase
 
     public function testWithOptionsKeepsTracing(): void
     {
-        $decorator = new HttpClientDecorator($this->inner, new RequestIdService('shop', 'api')->setRequestId('abc'));
+        $decorator = new HttpClientDecorator($this->inner, (new RequestIdService('shop', 'api'))->setRequestId('abc'));
 
         $decorator->withOptions(['timeout' => 1])->request('GET', 'https://example.com')->getStatusCode();
 
@@ -124,7 +124,7 @@ final class HttpClientDecoratorTest extends TestCase
     {
         $storage = new RequestIdService('shop', 'api');
 
-        new HttpClientDecorator($this->inner, $storage)->request('GET', 'https://example.com')->getStatusCode();
+        (new HttpClientDecorator($this->inner, $storage))->request('GET', 'https://example.com')->getStatusCode();
 
         self::assertMatchesRegularExpression('/^00-' . $storage->getTraceParent()->traceId . '-[0-9a-f]{16}-01$/', $this->sentHeaders[0]['traceparent'] ?? '');
         self::assertArrayNotHasKey('tracestate', $this->sentHeaders[0]);
@@ -134,7 +134,7 @@ final class HttpClientDecoratorTest extends TestCase
     {
         $storage = $this->continuedTrace();
 
-        new HttpClientDecorator($this->inner, $storage)
+        (new HttpClientDecorator($this->inner, $storage))
             ->request('GET', 'https://example.com', ['headers' => ['TraceParent: mine']])
             ->getStatusCode()
         ;
@@ -147,7 +147,7 @@ final class HttpClientDecoratorTest extends TestCase
     {
         $storage = $this->continuedTrace();
 
-        new HttpClientDecorator($this->inner, $storage)
+        (new HttpClientDecorator($this->inner, $storage))
             ->request('GET', 'https://example.com', ['headers' => ['tracestate' => 'mine=1']])
             ->getStatusCode()
         ;
@@ -161,7 +161,7 @@ final class HttpClientDecoratorTest extends TestCase
         $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00');
         self::assertInstanceOf(TraceParent::class, $received);
 
-        return new RequestIdService('shop', 'api')->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
+        return (new RequestIdService('shop', 'api'))->continueTrace($received, TraceState::fromHeaders(['rojo=1']));
     }
 
     /**

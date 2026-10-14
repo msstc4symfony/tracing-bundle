@@ -38,7 +38,7 @@ final class CompilerPassesTest extends TestCase
         $container->setDefinition(HttpClientPass::TRANSPORT_ID, new Definition(HttpClientInterface::class));
         $container->setDefinition('http_client', new Definition(HttpClientInterface::class));
 
-        new HttpClientPass()->process($container);
+        (new HttpClientPass())->process($container);
 
         $decorator = $container->getDefinition(HttpClientPass::DECORATOR_ID);
         self::assertSame(HttpClientDecorator::class, $decorator->getClass());
@@ -53,7 +53,7 @@ final class CompilerPassesTest extends TestCase
     {
         $container = new ContainerBuilder();
 
-        new HttpClientPass()->process($container);
+        (new HttpClientPass())->process($container);
 
         self::assertFalse($container->hasDefinition(HttpClientPass::DECORATOR_ID));
     }
@@ -62,10 +62,10 @@ final class CompilerPassesTest extends TestCase
     {
         $container = $this->guzzleContainer();
         $container->setDefinition('github', new Definition(Client::class));
-        $container->setDefinition('abstract', new Definition(Client::class)->setAbstract(true));
+        $container->setDefinition('abstract', (new Definition(Client::class))->setAbstract(true));
         $container->setDefinition('other', new Definition(stdClass::class));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertEquals([['handler' => $this->tracedHandler(null)]], $container->getDefinition('github')->getArguments());
         self::assertNull($container->getDefinition('github')->getConfigurator());
@@ -78,7 +78,7 @@ final class CompilerPassesTest extends TestCase
         $container = $this->guzzleContainer();
         $container->setDefinition('github', new Definition(Client::class, [['handler' => new Reference('app.stack'), 'timeout' => 3]]));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertEquals(
             [['handler' => $this->tracedHandler(new Reference('app.stack')), 'timeout' => 3]],
@@ -90,7 +90,7 @@ final class CompilerPassesTest extends TestCase
     {
         $container = $this->guzzleContainer();
         $container->getDefinition(RequestIdGuzzleHandler::class)->setSynthetic(true);
-        $container->setDefinition('github', new Definition(Client::class, ['$config' => ['timeout' => 3]])->setPublic(true));
+        $container->setDefinition('github', (new Definition(Client::class, ['$config' => ['timeout' => 3]]))->setPublic(true));
         $container->addCompilerPass(new GuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
 
         $container->compile(true);
@@ -104,9 +104,9 @@ final class CompilerPassesTest extends TestCase
     public function testTracesAClientWithItsOwnConfiguratorAndKeepsIt(): void
     {
         $container = $this->guzzleContainer();
-        $container->setDefinition('own', new Definition(Client::class)->setConfigurator(['app', 'configure']));
+        $container->setDefinition('own', (new Definition(Client::class))->setConfigurator(['app', 'configure']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame(['app', 'configure'], $container->getDefinition('own')->getConfigurator());
         self::assertEquals([['handler' => $this->tracedHandler(null)]], $container->getDefinition('own')->getArguments());
@@ -118,7 +118,7 @@ final class CompilerPassesTest extends TestCase
         $container->setParameter('app.client.class', Client::class);
         $container->setDefinition('github', new Definition('%app.client.class%'));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertCount(1, $container->getDefinition('github')->getArguments());
     }
@@ -126,9 +126,9 @@ final class CompilerPassesTest extends TestCase
     public function testConfiguresAClientBuiltByAFactory(): void
     {
         $container = $this->guzzleContainer();
-        $container->setDefinition('built', new Definition(Client::class, ['token'])->setFactory(['app.factory', 'create']));
+        $container->setDefinition('built', (new Definition(Client::class, ['token']))->setFactory(['app.factory', 'create']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame(['token'], $container->getDefinition('built')->getArguments());
         self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('built')->getConfigurator());
@@ -137,9 +137,9 @@ final class CompilerPassesTest extends TestCase
     public function testChainsTheOwnConfiguratorOfAClientBuiltByAFactory(): void
     {
         $container = $this->guzzleContainer();
-        $container->setDefinition('built', new Definition(Client::class)->setFactory(['app.factory', 'create'])->setConfigurator(['app', 'configure']));
+        $container->setDefinition('built', (new Definition(Client::class))->setFactory(['app.factory', 'create'])->setConfigurator(['app', 'configure']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         $configurator = $container->getDefinition('built')->getConfigurator();
         self::assertIsArray($configurator);
@@ -154,7 +154,7 @@ final class CompilerPassesTest extends TestCase
         $container = $this->guzzleContainer();
         $container->setDefinition('github', new Definition(Client::class, ['%app.guzzle_config%']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame(['%app.guzzle_config%'], $container->getDefinition('github')->getArguments());
         self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('github')->getConfigurator());
@@ -165,7 +165,7 @@ final class CompilerPassesTest extends TestCase
         $container = $this->guzzleContainer();
         $container->setDefinition('custom', new Definition(CustomConstructorClient::class, ['token']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame(['token'], $container->getDefinition('custom')->getArguments());
         self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('custom')->getConfigurator());
@@ -178,9 +178,9 @@ final class CompilerPassesTest extends TestCase
         }
 
         $container = $this->guzzleContainer();
-        $container->setDefinition('custom', new Definition(ClientWithoutConfig::class)->setConfigurator(['app', 'configure']));
+        $container->setDefinition('custom', (new Definition(ClientWithoutConfig::class))->setConfigurator(['app', 'configure']));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame(['app', 'configure'], $container->getDefinition('custom')->getConfigurator());
         self::assertNotEmpty(array_filter(
@@ -192,7 +192,7 @@ final class CompilerPassesTest extends TestCase
     public function testHandlesEveryClientWhateverComesBefore(): void
     {
         $container = $this->guzzleContainer();
-        $container->setDefinition('abstract', new Definition(Client::class)->setAbstract(true));
+        $container->setDefinition('abstract', (new Definition(Client::class))->setAbstract(true));
         $container->setDefinition('github', new Definition(Client::class));
         if (!method_exists(ClientInterface::class, 'getConfig')) {
             $container->setDefinition('unreachable', new Definition(ClientWithoutConfig::class));
@@ -200,7 +200,7 @@ final class CompilerPassesTest extends TestCase
         $container->setDefinition('custom', new Definition(CustomConstructorClient::class, ['token']));
         $container->setDefinition('last', new Definition(Client::class));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertNotNull($container->getDefinition('custom')->getConfigurator());
         self::assertEquals([['handler' => $this->tracedHandler(null)]], $container->getDefinition('last')->getArguments());
@@ -212,7 +212,7 @@ final class CompilerPassesTest extends TestCase
         $container->removeDefinition(RequestIdGuzzleHandler::class);
         $container->setDefinition('github', new Definition(Client::class));
 
-        new GuzzlePass()->process($container);
+        (new GuzzlePass())->process($container);
 
         self::assertSame([], $container->getDefinition('github')->getArguments());
     }
@@ -234,7 +234,7 @@ final class CompilerPassesTest extends TestCase
             $container = $this->guzzleContainer();
             $container->setDefinition('orphan', new Definition($class));
 
-            new GuzzlePass()->process($container);
+            (new GuzzlePass())->process($container);
 
             self::assertNull($container->getDefinition('orphan')->getConfigurator());
             self::assertSame([], $container->getDefinition('orphan')->getArguments());
@@ -258,7 +258,7 @@ final class CompilerPassesTest extends TestCase
 
     private function tracedHandler(?Reference $handler): Definition
     {
-        return new Definition(HandlerStack::class, [$handler])
+        return (new Definition(HandlerStack::class, [$handler]))
             ->setFactory([new Reference(RequestIdGuzzleHandler::class), 'decorateHandler'])
         ;
     }
