@@ -12,8 +12,11 @@ final class ServicesConfigTest extends TestCase
 {
     private const ROOT = __DIR__ . '/../../..';
 
+    private const NAMESPACE = 'Msstc4Symfony\\TracingBundle\\';
+
     /**
      * Class names in the example configs must survive moves: a stale one fails only in the user's app.
+     * Checked by file, not by loading: the Messenger and Sentry classes need libraries this suite may run without.
      */
     public function testEveryClassNamedInTheExampleConfigsExists(): void
     {
@@ -26,7 +29,8 @@ final class ServicesConfigTest extends TestCase
 
         self::assertNotEmpty($names);
         foreach ($names as $name) {
-            self::assertTrue(class_exists($name), $name);
+            $file = self::ROOT . '/src/' . str_replace('\\', '/', substr($name, strlen(self::NAMESPACE))) . '.php';
+            self::assertFileExists($file, $name);
         }
     }
 }
