@@ -5,7 +5,7 @@
 | Version | Supported          |
 | ------- | ------------------ |
 | 2.x     | :white_check_mark: |
-| 1.x     | :white_check_mark: until 2.0.0 is final |
+| 1.x     | :x:                |
 
 Runtime requirements: PHP >= 8.2, Symfony 7.4 / 8.x.
 
