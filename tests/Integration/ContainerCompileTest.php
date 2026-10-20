@@ -9,8 +9,11 @@ use GuzzleHttp\HandlerStack;
 use IteratorAggregate;
 use Monolog\Handler\TestHandler;
 use Monolog\LogRecord;
-use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
-use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\AppGuzzleConfigurator;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\EarlyLogListener;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\GuzzleConsumer;
@@ -39,6 +42,10 @@ use Symfony\Contracts\Service\ResetInterface;
  */
 final class ContainerCompileTest extends KernelTestCase
 {
+    private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
+
+    private const TRACE_PARENT = '00-' . self::TRACE_ID . '-00f067aa0ba902b7-01';
+
     #[Override]
     protected function setUp(): void
     {
@@ -58,22 +65,27 @@ final class ContainerCompileTest extends KernelTestCase
         return TestKernel::class;
     }
 
-    public function testIncomingTraceIsReturnedInTheResponse(): void
+    public function testTraceResponseNamesTheServerSpanOfTheIncomingTrace(): void
     {
         $kernel = self::bootKernel();
 
-        $response = $kernel->handle(Request::create('/ping', server: ['HTTP_REQUEST_ID' => 'abc', 'HTTP_REQUEST_FROM' => 'billing:api']));
+        $response = $kernel->handle(Request::create('/ping', server: ['HTTP_TRACEPARENT' => self::TRACE_PARENT]));
 
-        self::assertSame('abc', $response->headers->get('request-id'));
+        $traceResponse = TraceParent::fromHeader((string) $response->headers->get('traceresponse'));
+        self::assertInstanceOf(TraceParent::class, $traceResponse);
+        self::assertSame(self::TRACE_ID, $traceResponse->traceId);
+        self::assertNotSame('00f067aa0ba902b7', $traceResponse->spanId);
+        self::assertFalse($response->headers->has('request-id'));
     }
 
+    // Contract of the decoration registry: the decorator sits outside FrameworkBundle's mock_response_factory.
     public function testOutgoingHttpRequestCarriesTheTrace(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
 
         self::bootKernel();
         $container = self::getContainer();
-        $this->storage()->setRequestId('abc');
+        $known = $this->knownTrace();
 
         $client = $container->get('test.http_client');
         self::assertInstanceOf(HttpClientInterface::class, $client);
@@ -81,7 +93,8 @@ final class ContainerCompileTest extends KernelTestCase
 
         $factory = $container->get(RecordingResponseFactory::class);
         self::assertInstanceOf(RecordingResponseFactory::class, $factory);
-        self::assertContains('request-id: abc', $factory->lastHeaders);
+        self::assertContains('traceparent: ' . $known->traceParent->toHeader(), $factory->lastHeaders);
+        self::assertContains('baggage: msstc4symfony.caller=unknown%3Aunknown', $factory->lastHeaders);
     }
 
     public function testLogRecordsCarryTheTrace(): void
@@ -90,7 +103,7 @@ final class ContainerCompileTest extends KernelTestCase
 
         self::bootKernel();
         $container = self::getContainer();
-        $this->storage()->setRequestId('abc');
+        $known = $this->knownTrace();
 
         $logger = $container->get('test.logger');
         self::assertInstanceOf(LoggerInterface::class, $logger);
@@ -98,7 +111,11 @@ final class ContainerCompileTest extends KernelTestCase
 
         $handler = $container->get('monolog.handler.main');
         self::assertInstanceOf(TestHandler::class, $handler);
-        self::assertSame('abc', $handler->getRecords()[0]->extra['request_id'] ?? null);
+        $extra = $handler->getRecords()[0]->extra;
+        self::assertSame(self::TRACE_ID, $extra['trace_id'] ?? null);
+        self::assertSame($known->traceParent->spanId, $extra['span_id'] ?? null);
+        self::assertSame('00f067aa0ba902b7', $extra['parent_span_id'] ?? null);
+        self::assertSame('gateway:web', $extra['caller'] ?? null);
     }
 
     public function testLogsBeforeTheTracingListenerShareTheRequestTrace(): void
@@ -119,20 +136,21 @@ final class ContainerCompileTest extends KernelTestCase
         // The second handle() runs kernel.reset first, which also clears the log handler.
         $second = $kernel->handle(Request::create('/ping'));
 
-        self::assertNotSame($first->headers->get('request-id'), $second->headers->get('request-id'));
+        self::assertNotSame($first->headers->get('traceresponse'), $second->headers->get('traceresponse'));
         $this->assertEarlyLogSharesTheTrace($second);
     }
 
     public function testKernelResetForgetsTheTrace(): void
     {
         self::bootKernel();
-        $storage = $this->storage()->setRequestId('abc');
+        $known = $this->knownTrace();
 
         $resetter = self::getContainer()->get('services_resetter');
         self::assertInstanceOf(ResetInterface::class, $resetter);
         $resetter->reset();
 
-        self::assertNotSame('abc', $storage->getRequestId());
+        self::assertNotSame($known->runtimeId, $this->holder()->current()->runtimeId);
+        self::assertNotSame(self::TRACE_ID, $this->holder()->current()->traceParent->traceId);
     }
 
     #[TestWith([TestKernel::GUZZLE_CLIENT])]
@@ -248,19 +266,32 @@ final class ContainerCompileTest extends KernelTestCase
         self::assertInstanceOf(HandlerStack::class, $stack);
         $transport = new RecordingGuzzleTransport();
         $stack->setHandler($transport);
-        $this->storage()->setRequestId('abc');
+        $known = $this->knownTrace();
 
         $client->request('GET', 'http://example.test/');
 
-        self::assertSame(['abc'], $transport->lastRequest?->getHeader('request-id'));
+        self::assertSame([$known->traceParent->toHeader()], $transport->lastRequest?->getHeader('traceparent'));
     }
 
-    private function storage(): RequestIdServiceInterface
+    private function holder(): TraceContextHolderInterface
     {
-        $storage = self::getContainer()->get(RequestIdServiceInterface::class);
-        self::assertInstanceOf(RequestIdServiceInterface::class, $storage);
+        $holder = self::getContainer()->get(TraceContextHolderInterface::class);
+        self::assertInstanceOf(TraceContextHolderInterface::class, $holder);
 
-        return $storage;
+        return $holder;
+    }
+
+    /**
+     * Puts a trace received from "gateway:web" into the holder.
+     */
+    private function knownTrace(): TraceContext
+    {
+        $received = TraceParent::fromHeader(self::TRACE_PARENT);
+        self::assertInstanceOf(TraceParent::class, $received);
+        $context = TraceContext::start()->continuing($received, null, Baggage::fromHeaders(['msstc4symfony.caller=gateway%3Aweb']));
+        $this->holder()->replace($context);
+
+        return $context;
     }
 
     private function assertEarlyLogSharesTheTrace(Response $response): void
@@ -270,10 +301,10 @@ final class ContainerCompileTest extends KernelTestCase
         $records = $handler->getRecords();
         $early = array_find($records, static fn (LogRecord $record): bool => $record->message === EarlyLogListener::MESSAGE);
         self::assertInstanceOf(LogRecord::class, $early);
-        self::assertSame($response->headers->get('request-id'), $early->extra['request_id'] ?? null);
+        self::assertSame(TraceParent::fromHeader((string) $response->headers->get('traceresponse'))?->traceId, $early->extra['trace_id'] ?? null);
         $last = $records[array_key_last($records)];
         self::assertNotSame($early, $last);
-        foreach (['runtime_id', 'request_id', 'trace_id'] as $key) {
+        foreach (['runtime_id', 'trace_id', 'span_id'] as $key) {
             self::assertSame($last->extra[$key] ?? null, $early->extra[$key] ?? null, $key);
         }
     }

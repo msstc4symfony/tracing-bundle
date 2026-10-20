@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Integration;
 
 use Monolog\Handler\TestHandler;
-use Msstc4Symfony\TracingBundle\Messenger\Stamp\TraceStamp;
-use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
-use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
-use Msstc4Symfony\TracingBundle\Storage\W3c\TraceParent;
-use Msstc4Symfony\TracingBundle\Storage\W3c\TraceState;
+use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\TraceStamp;
+use Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TestKernel;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TracedMessage;
@@ -32,8 +34,8 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * W3C Trace Context through the real kernel: incoming request -> outgoing HttpClient call,
- * dispatched -> consumed message, logs and Sentry. Always on, no configuration.
+ * W3C Trace Context and Baggage through the real kernel: incoming request -> outgoing HttpClient
+ * call, dispatched -> consumed message, logs and Sentry. Always on, no configuration.
  */
 final class W3cTraceContextTest extends KernelTestCase
 {
@@ -67,36 +69,27 @@ final class W3cTraceContextTest extends KernelTestCase
         return TestKernel::class;
     }
 
-    public function testRequestIdIsDerivedFromAnIncomingTraceParent(): void
-    {
-        $kernel = self::bootKernel();
-
-        $response = $kernel->handle(Request::create('/ping', server: ['HTTP_TRACEPARENT' => self::TRACE_PARENT]));
-
-        self::assertSame('4bf92f35-77b3-4da6-a3ce-929d0e0e4736', $response->headers->get('request-id'));
-        self::assertFalse($response->headers->has('traceresponse'));
-    }
-
-    public function testIncomingTraceReachesOutgoingHttpRequests(): void
+    public function testIncomingTraceAndBaggageReachOutgoingHttpRequests(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
         $kernel = self::bootKernel();
 
         $response = $kernel->handle(Request::create('/call', server: [
-            'HTTP_REQUEST_ID' => 'abc',
             'HTTP_TRACEPARENT' => self::TRACE_PARENT,
             'HTTP_TRACESTATE' => 'rojo=00f067aa0ba902b7',
+            'HTTP_BAGGAGE' => 'msstc4symfony.caller=gateway%3Aweb,user=alice',
         ]));
 
-        self::assertSame('abc', $response->headers->get('request-id'));
         $sent = $this->sentHeaders();
-        self::assertSame('abc', $sent['request-id'] ?? null);
         $outgoing = TraceParent::fromHeader($sent['traceparent'] ?? '');
         self::assertInstanceOf(TraceParent::class, $outgoing);
         self::assertSame(self::TRACE_ID, $outgoing->traceId);
         self::assertSame(TraceParent::FLAG_SAMPLED, $outgoing->flags);
-        self::assertNotSame('00f067aa0ba902b7', $outgoing->parentId);
+        self::assertNotSame('00f067aa0ba902b7', $outgoing->spanId);
         self::assertSame('rojo=00f067aa0ba902b7', $sent['tracestate'] ?? null);
+        self::assertSame('msstc4symfony.caller=unknown%3Aunknown,user=alice', $sent['baggage'] ?? null);
+        self::assertSame($outgoing->toHeader(), $response->headers->get('traceresponse'));
+        self::assertArrayNotHasKey('request-id', $sent);
     }
 
     public function testNextRequestDoesNotInheritTheTrace(): void
@@ -117,22 +110,23 @@ final class W3cTraceContextTest extends KernelTestCase
     public function testKernelResetForgetsTheW3cTrace(): void
     {
         self::bootKernel();
-        $storage = $this->storage();
-        $storage->continueTrace($this->traceParent());
+        $this->continueTrace(baggage: Baggage::fromHeaders(['user=alice']));
 
         $resetter = self::getContainer()->get('services_resetter');
         self::assertInstanceOf(ResetInterface::class, $resetter);
         $resetter->reset();
 
-        self::assertNull($storage->getRemoteTraceParent());
-        self::assertNotSame(self::TRACE_ID, $storage->getTraceParent()->traceId);
+        $context = $this->holder()->current();
+        self::assertNull($context->remoteTraceParent);
+        self::assertNotSame(self::TRACE_ID, $context->traceParent->traceId);
+        self::assertTrue($context->baggage->isEmpty());
     }
 
     public function testLogRecordsCarryTheW3cTrace(): void
     {
         $this->skipUnless(TestKernel::hasMonologBundle(), 'symfony/monolog-bundle');
         self::bootKernel();
-        $this->storage()->continueTrace($this->traceParent());
+        $this->continueTrace();
 
         $logger = self::getContainer()->get('test.logger');
         self::assertInstanceOf(LoggerInterface::class, $logger);
@@ -142,7 +136,7 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertInstanceOf(TestHandler::class, $handler);
         $extra = $handler->getRecords()[0]->extra;
         self::assertSame(self::TRACE_ID, $extra['trace_id'] ?? null);
-        self::assertSame($this->storage()->getTraceParent()->parentId, $extra['span_id'] ?? null);
+        self::assertSame($this->holder()->current()->traceParent->spanId, $extra['span_id'] ?? null);
         self::assertSame('00f067aa0ba902b7', $extra['parent_span_id'] ?? null);
     }
 
@@ -150,20 +144,19 @@ final class W3cTraceContextTest extends KernelTestCase
     {
         $this->skipUnless(TestKernel::hasSentry(), 'sentry/sentry');
         self::bootKernel();
-        $this->storage()->continueTrace($this->traceParent());
+        $this->continueTrace();
 
         $tags = $this->sentryEventTags();
 
         self::assertSame(self::TRACE_ID, $tags['trace_id'] ?? null);
-        self::assertSame($this->storage()->getTraceParent()->parentId, $tags['span_id'] ?? null);
+        self::assertSame($this->holder()->current()->traceParent->spanId, $tags['span_id'] ?? null);
     }
 
     public function testMessagesCarryTheTraceThroughTheSerializingTransportWithoutConfiguration(): void
     {
         $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
         self::bootKernel();
-        $storage = $this->storage();
-        $storage->setRequestId('abc')->continueTrace($this->traceParent(), TraceState::fromHeaders(['rojo=1']));
+        $this->continueTrace(TraceState::fromHeaders(['rojo=1']), Baggage::fromHeaders(['user=alice']));
 
         $this->bus()->dispatch(new TracedMessage());
 
@@ -173,27 +166,25 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertCount(1, $stamps);
         $stamp = $stamps[0];
         self::assertInstanceOf(TraceStamp::class, $stamp);
-        self::assertSame('abc', $stamp->requestId);
-        self::assertSame($storage->getCurrentRequestFrom(), $stamp->requestFrom);
         self::assertSame('rojo=1', $stamp->traceState);
+        self::assertSame('msstc4symfony.caller=unknown%3Aunknown,user=alice', $stamp->baggage);
         $stamped = TraceParent::fromHeader($stamp->traceParent);
         self::assertInstanceOf(TraceParent::class, $stamped);
         self::assertSame(self::TRACE_ID, $stamped->traceId);
-        self::assertSame($storage->getTraceParent()->parentId, $stamped->parentId);
+        self::assertSame($this->holder()->current()->traceParent->spanId, $stamped->spanId);
     }
 
     public function testConsumerContinuesTheStampedTraceAndTheNextMessageStartsAnother(): void
     {
         $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
         self::bootKernel();
-        $storage = $this->storage();
-        $storage->continueTrace($this->traceParent());
+        $this->continueTrace();
         $this->bus()->dispatch(new TracedMessage());
         $sent = $this->transport()->getSent()[0] ?? null;
         self::assertInstanceOf(Envelope::class, $sent);
 
         // As a worker consumes them: the sent message, then one from a sender without the stamp.
-        $storage->continueTrace(TraceParent::start());
+        $this->holder()->replace(TraceContext::start()->continuing(TraceParent::start(), null, Baggage::empty()));
         $this->bus()->dispatch($sent->with(new ReceivedStamp('async')));
         $this->bus()->dispatch(new Envelope(new TracedMessage(), [new ReceivedStamp('async')]));
 
@@ -211,11 +202,14 @@ final class W3cTraceContextTest extends KernelTestCase
         self::bootKernel(['environment' => TestKernel::ENV_LEGACY_W3C]);
     }
 
-    public function testRequestFromIsBuiltFromTheConfiguredNames(): void
+    public function testCallerIsBuiltFromTheConfiguredNames(): void
     {
-        self::bootKernel(['environment' => TestKernel::ENV_NAMED]);
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_NAMED]);
 
-        self::assertSame('shop:api', $this->storage()->getCurrentRequestFrom());
+        $kernel->handle(Request::create('/call'));
+
+        self::assertSame('msstc4symfony.caller=shop%3Aapi', $this->sentHeaders()['baggage'] ?? null);
     }
 
     /**
@@ -235,14 +229,16 @@ final class W3cTraceContextTest extends KernelTestCase
         self::bootKernel(['environment' => $environment]);
     }
 
-    public function testRequestFromFallsBackToUnknownNames(): void
+    public function testCallerFallsBackToUnknownNames(): void
     {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
         $saved = $this->unsetEnv(...self::NAME_VARIABLES);
 
         try {
-            self::bootKernel();
+            $kernel = self::bootKernel();
+            $kernel->handle(Request::create('/call'));
 
-            self::assertSame('unknown:unknown', $this->storage()->getCurrentRequestFrom());
+            self::assertSame('msstc4symfony.caller=unknown%3Aunknown', $this->sentHeaders()['baggage'] ?? null);
         } finally {
             $this->restoreEnv($saved);
         }
@@ -332,12 +328,17 @@ final class W3cTraceContextTest extends KernelTestCase
         return $traceParent;
     }
 
-    private function storage(): RequestIdServiceInterface
+    private function holder(): TraceContextHolderInterface
     {
-        $storage = self::getContainer()->get(RequestIdServiceInterface::class);
-        self::assertInstanceOf(RequestIdServiceInterface::class, $storage);
+        $holder = self::getContainer()->get(TraceContextHolderInterface::class);
+        self::assertInstanceOf(TraceContextHolderInterface::class, $holder);
 
-        return $storage;
+        return $holder;
+    }
+
+    private function continueTrace(?TraceState $state = null, ?Baggage $baggage = null): void
+    {
+        $this->holder()->replace(TraceContext::start()->continuing($this->traceParent(), $state, $baggage ?? Baggage::empty()));
     }
 
     private function bus(): MessageBusInterface

@@ -3,26 +3,30 @@
 ![Build Status](https://github.com/msstc4symfony/tracing-bundle/actions/workflows/checks.yml/badge.svg?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Receives, keeps and forwards a trace context so one user action can be followed through
-every service it touches:
+Receives, keeps and forwards a [W3C Trace Context](https://www.w3.org/TR/trace-context/) and
+[W3C Baggage](https://www.w3.org/TR/baggage/), so one user action can be followed through every
+service it touches, OpenTelemetry-instrumented ones included:
 
-* `request ID` — identifier of the request, shared by every service on its path;
-* `request from` — `application:component` of the service that sent the request;
-* `runtime ID` — identifier of the current unit of work in this service (HTTP request,
+* `trace_id` — the trace, shared by every service on its path;
+* `span_id` / `parent_span_id` — this unit of work's span and the span of the unit that called it;
+* `caller` — `application:component` of the calling service, sent as the baggage member
+  `msstc4symfony.caller`;
+* `runtime_id` — identifier of the current unit of work in this service (HTTP request,
   console command, consumed message).
 
 | Channel | In | Out |
 |---|---|---|
-| HTTP | `request-id` / `request-from` request headers, W3C `traceparent` / `tracestate` | same headers on the response and on every Symfony HttpClient / Guzzle request; `traceparent` / `tracestate` on outgoing requests |
+| HTTP | `traceparent`, `tracestate`, `baggage` request headers | `traceresponse` on the response; `traceparent`, `tracestate`, `baggage` on every Symfony HttpClient / Guzzle request |
 | Messenger | `TraceStamp` on consumed messages | `TraceStamp` on dispatched messages |
-| Logs | — | `runtime_id`, `request_id`, `request_from`, `trace_id`, `span_id`, `parent_span_id` in every Monolog record's `extra` |
-| Sentry (opt-in) | — | `runtime_id`, `request_id`, `request_from` in every event's `extra`; `trace_id`, `span_id` tags |
+| Logs | — | `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller` in every Monolog record's `extra` |
+| Sentry (opt-in) | — | `runtime_id`, `caller` in every event's `extra`; `trace_id`, `span_id` tags |
 
 ## Compatibility
 
 | Bundle  | PHP  | Symfony       |
 |---------|------|---------------|
-| 1.3+    | 8.2+ | 7.4, 8.x      |
+| 2.0     | 8.2+ | 7.4, 8.x      |
+| 1.3     | 8.2+ | 7.4, 8.x      |
 | 1.0–1.2 | 8.4+ | 7.4, 8.x      |
 
 Symfony 8.x needs PHP 8.4; on PHP 8.2 and 8.3 Composer installs Symfony 7.4.
@@ -44,7 +48,7 @@ return [
 ];
 ```
 
-`request from` is `application_name:component_name`. Both default to the `APPLICATION_NAME` /
+The caller name sent downstream is `application_name:component_name`. Both default to the `APPLICATION_NAME` /
 `COMPONENT_NAME` environment variables, or `unknown` when those are not set:
 
 ```yaml
@@ -60,8 +64,7 @@ msstc4symfony_tracing:
   Records logged before the request listener (kernel boot, request listeners above priority
   2048) keep their ids: the listener resets the trace unless `kernel.reset` (or a fresh PHP
   process) opened a new one since the previous main request. An
-  incoming `request-id` / `traceparent` replaces the request and trace id from that point on;
-  the runtime id stays.
+  incoming `traceparent` replaces the trace id from that point on; the runtime id stays.
 * Symfony HttpClient: every framework client, default and scoped, sends the trace headers
   (the shared `http_client.transport` is decorated). Clients created outside FrameworkBundle
   are not covered.
@@ -73,82 +76,85 @@ msstc4symfony_tracing:
     `getConfig('handler')` (every client on Guzzle 7, `GuzzleHttp\Client` on Guzzle 8);
   * any other Guzzle 8 client cannot be reached and is named in the container compiler log
     (`var/cache/<env>/*Compiler.log`, debug mode); create it with the handler from
-    `RequestIdGuzzleHandler::decorateHandler()`, or push `RequestIdGuzzleHandler::middleware()`
+    `TraceGuzzleMiddleware::decorateHandler()`, or push `TraceGuzzleMiddleware::middleware()`
     onto its stack yourself.
 * Monolog: the processor is registered for all channels.
 * The context is reset on `kernel.reset`, so long-running workers (RoadRunner, FrankenPHP,
   Messenger) never carry an id into the next unit of work.
 
-Headers already set by the caller are never overwritten (`request-id` and `request-from` independently).
+Headers already set by the caller are never overwritten; see Baggage below for the one addition.
 
-## W3C Trace Context (OpenTelemetry interop)
+## W3C Trace Context
 
-Always on, nothing to configure: W3C Trace Context is part of the trace the bundle keeps, next
-to `request-id`, which keeps working as before.
+Always on, nothing to configure.
 
 Incoming request (main requests only):
 
-* a valid [`traceparent`](https://www.w3.org/TR/trace-context/#traceparent-header) is kept:
+* a valid [`traceparent`](https://www.w3.org/TR/trace-context/#traceparent-header) is continued:
   trace id, parent span id, flags (sampled and random; reserved bits are cleared, as the spec
   says for version `00`). This request gets its own span id;
 * an invalid one is ignored, as the spec says: unknown format, upper-case hex, version `ff`,
   version `00` with extra fields, all-zero trace or parent id, the header sent twice. Its
-  `tracestate` is ignored with it. Higher versions are read by their first four fields and
-  forwarded as version `00`;
+  `tracestate` is ignored with it, and the request starts a new trace. Higher versions are read
+  by their first four fields and forwarded as version `00`;
 * `tracestate` entries are forwarded unchanged (repeated headers joined with `,`, blank entries
   and surrounding spaces removed). The whole header is ignored when an entry breaks the spec's
   `key=value` grammar, a key repeats or there are more than 32 entries. Above 512 characters
-  entries are dropped as the spec suggests: those over 128 characters first, then from the end;
-* no `request-id` but a valid `traceparent`: the request id becomes the trace id in UUID
-  layout (`4bf92f3577b34da6a3ce929d0e0e4736` → `4bf92f35-77b3-4da6-a3ce-929d0e0e4736`; its
-  version/variant bits are arbitrary, so a strict UUIDv4 validator rejects it), and
-  `request-from` is the header or `unknown`. An OpenTelemetry caller's trace then shares its id
-  with this bundle's request id. With a `request-id` header both ids are kept as received.
+  entries are dropped as the spec suggests: those over 128 characters first, then from the end.
+
+Response: [`traceresponse`](https://www.w3.org/TR/trace-context-2/#traceresponse-header)
+(Trace Context Level 2) names this request's span, so a caller without `traceparent` learns the
+trace id the service started. A `traceresponse` the application set is kept.
 
 Outgoing (Symfony HttpClient, Guzzle, Messenger): `traceparent` with this unit's own span —
 the same trace id, flags and span id the unit logs — plus the received `tracestate`. Two calls
 from one unit therefore carry the same parent id. Without an incoming trace the unit starts
 one: random 16-byte trace id, 8-byte span id, flags `01`. A `traceparent` set by the caller is
-kept, and so is a `tracestate` set by the caller, even next to the bundle's own `traceparent`
-(dropping either would lose data the caller chose to send). No `traceresponse` header is sent.
-
-Both headers, including a `tracestate` received from outside, go to every host the clients
-call, third-party APIs included (see the spec's
-[privacy section](https://www.w3.org/TR/trace-context/#privacy-considerations)). Set
-`traceparent` / `tracestate` yourself on a request to override them.
-
-Messenger: a dispatched message carries one `TraceStamp` (request id, request from,
-`traceparent`, `tracestate`); the consumer continues that trace. Every consumer must run this
-bundle: Messenger serializers cannot decode a message with an unknown stamp class. A consumed
-message without the stamp starts a new trace and its request id is that trace id in UUID
-layout; a sync (`sync://`) message without it keeps the dispatching unit's request id and
-`request from` and runs as a child span of its trace.
+kept with no `tracestate` added; a `tracestate` set by the caller is kept too.
 
 Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
 (the `traceparent` received over HTTP or in a `TraceStamp`), `null` when the unit started the
 trace. As outgoing calls send the unit's own span, a receiver's `parent_span_id` is a `span_id` in
 the sender's logs, so the logs of every service rebuild the call tree.
 
-A nested unit of work inside one process (an application action, a batch item) can run in its
-own span, a child of the current one:
+## W3C Baggage
 
-```php
-// Lazily created ids must exist before the snapshot, or the nested unit's ones are lost on restore.
-$trace->getTraceParent();
-$trace->getRequestId();
-$outer = $trace->snapshot();
-$trace->restore($outer->withChildSpan());
-try {
-    // nested unit
-} finally {
-    $trace->restore($outer);
-}
-```
+Received `baggage` is kept for the unit of work and forwarded with every outgoing request and
+message, so a chain of services that read it is not broken by one that does not. It is kept
+even when `traceparent` is missing or invalid. Members that break the
+[grammar](https://www.w3.org/TR/baggage/#definition) are dropped one by one, the rest are kept;
+above 180 members or 8192 bytes members are dropped from the end. Values are percent-decoded
+on receipt and percent-encoded when sent.
 
-`withChildSpan()` throws `LogicException` on a context without a trace.
+The bundle adds one member, `msstc4symfony.caller=<application_name>:<component_name>`, to
+what it sends: the receiver logs it as `caller`. A `baggage` header the caller set (by hand, or
+Sentry's `sentry-*` members set on the client) is sent as given, followed by the members it does
+not name: this service as caller and the received ones. Only `caller` is logged, never the rest
+of the baggage.
 
-Long-running workers reset the W3C context with the rest of the trace: every main request,
-consumed message and `kernel.reset` starts clean.
+Guzzle with Sentry's `GuzzleTracingMiddleware`: that middleware replaces `baggage` with Sentry's
+members. Push it so it runs before this bundle's middleware (further down the stack) — then the
+bundle sees Sentry's header and adds the rest; run after it, Sentry drops the caller and the
+received members.
+
+Baggage and trace headers, including baggage received from outside, go to every host the clients
+call, third-party APIs included (see the specs' privacy sections:
+[Trace Context](https://www.w3.org/TR/trace-context/#privacy-considerations),
+[Baggage](https://www.w3.org/TR/baggage/#privacy-considerations)). Set the headers yourself on a
+request to override them.
+
+Upgrading from 1.x: `TraceStamp` moved to `Framework\Messenger\TraceStamp`, and a message stamped
+by one major cannot be decoded by the other. Drain the async transports (or stop producers until
+the consumers are upgraded, and the other way round) before switching.
+
+Messenger: a dispatched message carries one `TraceStamp` (`traceparent`, `tracestate`,
+`baggage` as header strings); the consumer continues that trace. Every consumer must run this
+bundle: Messenger serializers cannot decode a message with an unknown stamp class. A consumed
+message without the stamp starts a new trace; a sync (`sync://`) message without it runs as a
+child span of the dispatching unit, in the same runtime.
+
+Long-running workers reset the context with every main request, consumed message and
+`kernel.reset`.
 
 ## Opt-in integrations
 
@@ -175,21 +181,51 @@ Sentry's external propagation context either: that hook replaces Sentry's own pr
 ## Usage
 
 ```php
+use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+
 final class Service
 {
     public function __construct(
-        private RequestIdServiceInterface $trace,
+        private TraceContextHolderInterface $trace,
     ) {
     }
 
     public function doSomething(): void
     {
-        $runtimeId = $this->trace->getRuntimeId();
-        $requestId = $this->trace->getRequestId();
-        $requestFrom = $this->trace->getRequestFrom();
+        $context = $this->trace->current();
+        $traceId = $context->traceParent->traceId;
+        $caller = $context->caller();
     }
 }
 ```
+
+A nested unit of work inside one process (an application action, a batch item) runs in its
+own span, a child of the current one:
+
+```php
+$outer = $this->trace->current();
+$this->trace->replace($outer->withChildSpan());
+try {
+    // nested unit
+} finally {
+    $this->trace->replace($outer);
+}
+```
+
+## Public API
+
+Everything else is `@internal`.
+
+| Kind | Name |
+|---|---|
+| Trace context (immutable) | `Domain\ValueObject\TraceContext`, `TraceParent`, `TraceState`, `Baggage`, `OutgoingTrace` |
+| Port | `Application\Port\TraceContextHolderInterface` (`current()`, `replace()`, `reset()`) |
+| Caller name | `Application\CallerName` |
+| Messenger | `Framework\Messenger\IncomingTraceMiddleware`, `OutgoingTraceMiddleware`, `TraceStamp` |
+| Sentry | `Framework\Sentry\TracingIntegration` |
+| Guzzle | `Infrastructure\Guzzle\TraceGuzzleMiddleware` (`decorateHandler()`, `middleware()`) |
+| Bundle | `TracingBundle`; config keys `msstc4symfony_tracing.application_name` / `.component_name` |
+| Wire format | headers `traceparent`, `tracestate`, `baggage`, `traceresponse`; baggage member `msstc4symfony.caller`; log keys `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller` |
 
 ## Local development
 

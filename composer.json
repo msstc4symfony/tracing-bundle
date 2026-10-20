@@ -8,7 +8,7 @@
     }
   ],
   "type": "symfony-bundle",
-  "description": "Request tracing for Symfony: propagates request id and caller across HTTP, Messenger and logs",
+  "description": "W3C Trace Context and Baggage for Symfony: propagates the trace across HTTP, Messenger and logs",
   "minimum-stability": "stable",
   "keywords": [
     "php",
@@ -33,8 +33,7 @@
     "symfony/console": "^7.4|^8.0",
     "symfony/event-dispatcher": "^7.4|^8.0",
     "symfony/framework-bundle": "^7.4|^8.0",
-    "symfony/service-contracts": "^3",
-    "symfony/uid": "^7.4|^8.0"
+    "symfony/service-contracts": "^3"
   },
   "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.76",

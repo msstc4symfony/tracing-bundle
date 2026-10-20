@@ -3,47 +3,54 @@
 declare(strict_types=1);
 
 use GuzzleHttp\ClientInterface;
-use Msstc4Symfony\TracingBundle\EventListener\ConsoleSubscriber;
-use Msstc4Symfony\TracingBundle\EventListener\HTTPRequestListener;
-use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
-use Msstc4Symfony\TracingBundle\Messenger\EventListener\WorkerTraceSubscriber;
-use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
-use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
-use Msstc4Symfony\TracingBundle\Monolog\RequestIdProcessor;
-use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
-use Msstc4Symfony\TracingBundle\Storage\RequestIdService;
-use Msstc4Symfony\TracingBundle\Storage\RequestIdServiceInterface;
+use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\IncomingTraceMiddleware;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\OutgoingTraceMiddleware;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\WorkerTraceSubscriber;
+use Msstc4Symfony\TracingBundle\Framework\Monolog\TraceLogProcessor;
+use Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration;
+use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
+use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\TraceGuzzleMiddleware;
+use Msstc4Symfony\TracingBundle\Presentation\EventListener\ConsoleTraceSubscriber;
+use Msstc4Symfony\TracingBundle\Presentation\EventListener\HttpTraceListener;
 use Sentry\Integration\IntegrationInterface;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 
+use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
+
 return static function (ContainerConfigurator $container): void {
     $container->parameters()
-        ->set('msstc4symfony_tracing.unknown', RequestIdServiceInterface::UNKNOWN_APPLICATION)
+        ->set('msstc4symfony_tracing.unknown', 'unknown')
     ;
 
     $services = $container->services();
     $services->defaults()->autowire()->autoconfigure();
 
-    $services->set(RequestIdService::class)
+    $services->set(InMemoryTraceContextHolder::class)
         ->tag('kernel.reset', ['method' => 'reset'])
     ;
-    $services->alias(RequestIdServiceInterface::class, RequestIdService::class)->public();
+    $services->alias(TraceContextHolderInterface::class, InMemoryTraceContextHolder::class)->public();
+    $services->set(CallerName::class)
+        ->arg('$applicationName', param('msstc4symfony_tracing.application_name'))
+        ->arg('$componentName', param('msstc4symfony_tracing.component_name'))
+    ;
 
-    $services->set(HTTPRequestListener::class)
+    $services->set(HttpTraceListener::class)
         ->tag('kernel.reset', ['method' => 'reset'])
     ;
-    $services->set(ConsoleSubscriber::class);
-    $services->set(RequestIdProcessor::class)->tag('monolog.processor');
+    $services->set(ConsoleTraceSubscriber::class);
+    $services->set(TraceLogProcessor::class)->tag('monolog.processor');
 
     // Optional integrations are registered only when their library is installed.
     if (interface_exists(ClientInterface::class)) {
-        $services->set(RequestIdGuzzleHandler::class);
+        $services->set(TraceGuzzleMiddleware::class);
     }
 
     if (interface_exists(MiddlewareInterface::class)) {
-        $services->set(IncomingStampMiddleware::class);
-        $services->set(OutgoingStampMiddleware::class);
+        $services->set(IncomingTraceMiddleware::class);
+        $services->set(OutgoingTraceMiddleware::class);
         $services->set(WorkerTraceSubscriber::class);
     }
 

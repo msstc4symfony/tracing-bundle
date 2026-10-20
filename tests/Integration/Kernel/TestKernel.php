@@ -6,9 +6,9 @@ namespace Msstc4Symfony\TracingBundle\Test\Integration\Kernel;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
-use Msstc4Symfony\TracingBundle\Messenger\Middleware\IncomingStampMiddleware;
-use Msstc4Symfony\TracingBundle\Messenger\Middleware\OutgoingStampMiddleware;
-use Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\IncomingTraceMiddleware;
+use Msstc4Symfony\TracingBundle\Framework\Messenger\OutgoingTraceMiddleware;
+use Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration;
 use Msstc4Symfony\TracingBundle\TracingBundle;
 use Override;
 use Psr\Log\NullLogger;
@@ -136,8 +136,8 @@ final class TestKernel extends Kernel
             $framework['messenger'] = [
                 'default_bus' => 'bus.commands',
                 'buses' => [
-                    'bus.commands' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
-                    'bus.events' => ['middleware' => [OutgoingStampMiddleware::class, IncomingStampMiddleware::class]],
+                    'bus.commands' => ['middleware' => [OutgoingTraceMiddleware::class, IncomingTraceMiddleware::class]],
+                    'bus.events' => ['middleware' => [OutgoingTraceMiddleware::class, IncomingTraceMiddleware::class]],
                 ],
                 // Serialized, so the stamps go through the default serializer as on a real transport.
                 'transports' => ['async' => 'in-memory://?serialize=true'],

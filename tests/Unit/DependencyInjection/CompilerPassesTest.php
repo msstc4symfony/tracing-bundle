@@ -7,13 +7,15 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\HandlerStack;
-use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\GuzzlePass;
-use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\HttpClientPass;
-use Msstc4Symfony\TracingBundle\GuzzleHttp\ChainedClientConfigurator;
-use Msstc4Symfony\TracingBundle\GuzzleHttp\RequestIdGuzzleHandler;
-use Msstc4Symfony\TracingBundle\HttpClient\HttpClientDecorator;
+use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\HttpClientPass;
+use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\ChainedClientConfigurator;
+use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\TraceGuzzleMiddleware;
+use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection\Fixture\CustomConstructorClient;
-use Msstc4Symfony\TracingBundle\Test\Unit\GuzzleHttp\Fixture\ClientWithoutConfig;
+use Msstc4Symfony\TracingBundle\Test\Unit\Infrastructure\Guzzle\Fixture\ClientWithoutConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -41,8 +43,16 @@ final class CompilerPassesTest extends TestCase
         (new HttpClientPass())->process($container);
 
         $decorator = $container->getDefinition(HttpClientPass::DECORATOR_ID);
-        self::assertSame(HttpClientDecorator::class, $decorator->getClass());
+        self::assertSame(TraceHttpClientDecorator::class, $decorator->getClass());
         self::assertSame([HttpClientPass::TRANSPORT_ID, null, -15], $decorator->getDecoratedService());
+        self::assertEquals(
+            [
+                '$inner' => new Reference('msstc4symfony_tracing.http_client.transport.inner'),
+                '$holder' => new Reference(TraceContextHolderInterface::class),
+                '$caller' => new Reference(CallerName::class),
+            ],
+            $decorator->getArguments(),
+        );
         self::assertCount(1, array_filter(
             $container->getDefinitions(),
             static fn (Definition $definition): bool => $definition->getDecoratedService() !== null,
@@ -89,7 +99,7 @@ final class CompilerPassesTest extends TestCase
     public function testTracesANamedConfigArgumentOnceTheContainerResolvedIt(): void
     {
         $container = $this->guzzleContainer();
-        $container->getDefinition(RequestIdGuzzleHandler::class)->setSynthetic(true);
+        $container->getDefinition(TraceGuzzleMiddleware::class)->setSynthetic(true);
         $container->setDefinition('github', (new Definition(Client::class, ['$config' => ['timeout' => 3]]))->setPublic(true));
         $container->addCompilerPass(new GuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
 
@@ -131,7 +141,7 @@ final class CompilerPassesTest extends TestCase
         (new GuzzlePass())->process($container);
 
         self::assertSame(['token'], $container->getDefinition('built')->getArguments());
-        self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('built')->getConfigurator());
+        self::assertEquals([new Reference(TraceGuzzleMiddleware::class), 'addHandler'], $container->getDefinition('built')->getConfigurator());
     }
 
     public function testChainsTheOwnConfiguratorOfAClientBuiltByAFactory(): void
@@ -146,7 +156,7 @@ final class CompilerPassesTest extends TestCase
         self::assertSame('__invoke', $configurator[1]);
         self::assertInstanceOf(Definition::class, $configurator[0]);
         self::assertSame(ChainedClientConfigurator::class, $configurator[0]->getClass());
-        self::assertEquals([['app', 'configure'], new Reference(RequestIdGuzzleHandler::class)], $configurator[0]->getArguments());
+        self::assertEquals([['app', 'configure'], new Reference(TraceGuzzleMiddleware::class)], $configurator[0]->getArguments());
     }
 
     public function testConfiguresAClientWhoseConfigIsAParameter(): void
@@ -157,7 +167,7 @@ final class CompilerPassesTest extends TestCase
         (new GuzzlePass())->process($container);
 
         self::assertSame(['%app.guzzle_config%'], $container->getDefinition('github')->getArguments());
-        self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('github')->getConfigurator());
+        self::assertEquals([new Reference(TraceGuzzleMiddleware::class), 'addHandler'], $container->getDefinition('github')->getConfigurator());
     }
 
     public function testConfiguresAClientWithItsOwnConstructor(): void
@@ -168,7 +178,7 @@ final class CompilerPassesTest extends TestCase
         (new GuzzlePass())->process($container);
 
         self::assertSame(['token'], $container->getDefinition('custom')->getArguments());
-        self::assertEquals([new Reference(RequestIdGuzzleHandler::class), 'addHandler'], $container->getDefinition('custom')->getConfigurator());
+        self::assertEquals([new Reference(TraceGuzzleMiddleware::class), 'addHandler'], $container->getDefinition('custom')->getConfigurator());
     }
 
     public function testLeavesAClientItCannotReachAndLogsIt(): void
@@ -209,7 +219,7 @@ final class CompilerPassesTest extends TestCase
     public function testLeavesClientsAloneWithoutTheTracingService(): void
     {
         $container = $this->guzzleContainer();
-        $container->removeDefinition(RequestIdGuzzleHandler::class);
+        $container->removeDefinition(TraceGuzzleMiddleware::class);
         $container->setDefinition('github', new Definition(Client::class));
 
         (new GuzzlePass())->process($container);
@@ -251,7 +261,7 @@ final class CompilerPassesTest extends TestCase
         }
 
         $container = new ContainerBuilder();
-        $container->setDefinition(RequestIdGuzzleHandler::class, new Definition(RequestIdGuzzleHandler::class));
+        $container->setDefinition(TraceGuzzleMiddleware::class, new Definition(TraceGuzzleMiddleware::class));
 
         return $container;
     }
@@ -259,7 +269,7 @@ final class CompilerPassesTest extends TestCase
     private function tracedHandler(?Reference $handler): Definition
     {
         return (new Definition(HandlerStack::class, [$handler]))
-            ->setFactory([new Reference(RequestIdGuzzleHandler::class), 'decorateHandler'])
+            ->setFactory([new Reference(TraceGuzzleMiddleware::class), 'decorateHandler'])
         ;
     }
 }

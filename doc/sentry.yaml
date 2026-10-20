@@ -1,4 +1,4 @@
 sentry:
   options:
     integrations:
-      - Msstc4Symfony\TracingBundle\Sentry\Integration\TracingIntegration
+      - Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration

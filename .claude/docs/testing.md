@@ -3,7 +3,7 @@
 - `tests/Unit` — по тесту на каждый класс с поведением; HttpClient — `MockHttpClient`,
   Guzzle — настоящий `Client` с `MockHandler`, Messenger — `StackMiddleware`,
   Sentry — `Scope::applyToEvent()` после `SentrySdk::init()->bindClient()`; W3C-теги и
-  отсутствие утечки между unit'ами (`reset()`, `snapshot()/restore()`) — `TracingIntegrationTest`,
+  отсутствие утечки между unit'ами (`reset()`, `replace()` внешнего контекста) — `TracingIntegrationTest`,
   проводка в ядре — `W3cTraceContextTest::testSentryEventsAreTaggedWithTheW3cTrace` (алиас
   `TestKernel::SENTRY_INTEGRATION`, только при установленном Sentry).
 - `tests/Integration/ContainerCompileTest` — ядро Framework + Tracing + установленные опциональные
@@ -15,14 +15,15 @@
   `RecordingGuzzleTransport`), ранние логи (`EarlyLogListener`).
 - Каталог кеша ядра — на процесс (`getmypid()`): infection параллелит PHPUnit.
 - Моки без ожиданий дают notice — `createStub()`.
-- Messenger: `MessageBusTraceTest` (настоящая шина, sync/deferred), `WorkerTraceTest`
-  (настоящий `Worker`: батч-flush, остановка, running/idle-тики), `UnitBoundaryTest` (защиты по
+- Messenger: `TraceMiddlewareTest` (штампы, вложенность, невалидный штамп), `MessageBusTraceTest` (настоящая шина, sync/deferred), `WorkerTraceTest`
+  (настоящий `Worker`, метка трассы — член baggage `label`: батч-flush, остановка, running/idle-тики), `UnitBoundaryTest` (защиты по
   вложенности). Ядро настраивает две шины с нашими middleware — проверка, что подписчик и
-  шины делят один экземпляр `IncomingStampMiddleware`.
-- W3C: векторы спецификации — `tests/Unit/Storage/W3c/` (`TraceParentTest`, `TraceStateTest`);
+  шины делят один экземпляр `IncomingTraceMiddleware`.
+- W3C: векторы спецификации — `tests/Unit/Domain/ValueObject/` (`TraceParentTest`, `TraceStateTest`, `BaggageTest`,
+  `TraceContextTest`);
   `tests/Integration/W3cTraceContextTest` — реальное ядро: вход → `/call`
-  (`OutgoingCallController` делает исходящий запрос через `http_client`), вывод request id,
-  второй запрос без `traceparent`, `services_resetter`, логи, Messenger через
+  (`OutgoingCallController` делает исходящий запрос через `http_client`): traceparent/tracestate/baggage
+  и `traceresponse`, caller из конфига (`named`) и `unknown:unknown`, второй запрос без `traceparent`, `services_resetter`, логи, Messenger через
   `in-memory://?serialize=true` (штамп проходит PhpSerializer) и `TracedMessageHandler`.
   Окружения ядра: `test` (без конфига бандла), `named` (`application_name: shop`,
   `component_name: api`), `legacy_w3c` (`w3c_trace_context: false` → ожидается
@@ -30,3 +31,7 @@
 - Под coverage `beStrictAboutCoverageMetadata` делает тест risky, если исполнен класс без
   `#[CoversClass]`/`#[UsesClass]` (обычный `phpunit` этого не видит, infection — падает на
   начальном прогоне). Проверка: `XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-text=/dev/null`.
+- Стражи: `tests/Unit/SourceTest` (в `src/` нет `request-id`/`request_from`), `tests/Unit/Resources/ServicesConfigTest`
+  (классы из `doc/*.yaml` существуют).
+- Тесты каналов строят контекст через `new InMemoryTraceContextHolder()` и
+  `$holder->replace($holder->current()->continuing(...))`; известный trace в kernel-тестах — `knownTrace()`.

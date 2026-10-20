@@ -4,6 +4,64 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.0.0-rc.1] - 2026-10-20
+
+The bundle propagates W3C Trace Context and W3C Baggage only; the trace of a unit of work is an
+immutable `TraceContext` behind a three-method holder. Configuration keys are unchanged.
+
+### Upgrading
+
+- Drain the Messenger async transports before switching producers or consumers: `TraceStamp` moved
+  (`Messenger\Stamp\TraceStamp` → `Framework\Messenger\TraceStamp`) and changed shape, so a message stamped by
+  1.x fails to decode on 2.0 (`MessageDecodingFailedException`) and the other way round.
+- Update `framework.messenger.buses.*.middleware` and `sentry.options.integrations` to the new class names.
+
+### Changed
+
+- Classes moved into the canonical layers of bundle-standard v3 (`Msstc4Symfony\TracingBundle\…`):
+  - `Storage\W3c\TraceParent`, `Storage\W3c\TraceState` → `Domain\ValueObject\TraceParent`, `Domain\ValueObject\TraceState`;
+  - `Storage\TraceContext` → `Domain\ValueObject\TraceContext` (rewritten, see below);
+  - `Storage\RequestIdServiceInterface` → `Application\Port\TraceContextHolderInterface` (rewritten, see below);
+  - `Storage\RequestIdService` → `Infrastructure\Context\InMemoryTraceContextHolder` (`@internal`);
+  - `HttpClient\HttpClientDecorator` → `Infrastructure\HttpClient\TraceHttpClientDecorator` (`@internal`);
+  - `GuzzleHttp\RequestIdGuzzleHandler` → `Infrastructure\Guzzle\TraceGuzzleMiddleware`;
+  - `GuzzleHttp\ChainedClientConfigurator` → `Infrastructure\Guzzle\ChainedClientConfigurator` (`@internal`);
+  - `EventListener\HTTPRequestListener` → `Presentation\EventListener\HttpTraceListener` (`@internal`);
+  - `EventListener\ConsoleSubscriber` → `Presentation\EventListener\ConsoleTraceSubscriber` (`@internal`);
+  - `Messenger\Middleware\IncomingStampMiddleware`, `OutgoingStampMiddleware` →
+    `Framework\Messenger\IncomingTraceMiddleware`, `OutgoingTraceMiddleware` (update `buses.*.middleware`);
+  - `Messenger\Stamp\TraceStamp` → `Framework\Messenger\TraceStamp`;
+  - `Messenger\EventListener\WorkerTraceSubscriber` → `Framework\Messenger\WorkerTraceSubscriber` (`@internal`);
+  - `Monolog\RequestIdProcessor` → `Framework\Monolog\TraceLogProcessor` (`@internal`);
+  - `Sentry\Integration\TracingIntegration` → `Framework\Sentry\TracingIntegration` (update `sentry.options.integrations`);
+  - `DependencyInjection\Compiler\*Pass` → `DependencyInjection\CompilerPass\*Pass` (`@internal`).
+- `request-id` and `request-from` are gone: no longer read from requests, sent on responses or outgoing
+  requests, or logged (`request_id`, `request_from`). The caller travels as the baggage member
+  `msstc4symfony.caller` and is logged as `caller`.
+- The response carries `traceresponse` (W3C Trace Context Level 2) instead of `request-id`.
+- `RequestIdServiceInterface` is replaced by `TraceContextHolderInterface`: `current(): TraceContext`,
+  `replace(TraceContext)`, `reset()`. `snapshot()` / `restore()` become `current()` / `replace()`;
+  request id, request-from and generate methods are removed.
+- `TraceContext` is immutable with a private constructor: `start()`, `continuing()`, `withBaggage()`,
+  `withChildSpan()`, `outgoing()`, `caller()`; every field is set on creation (no lazily created ids).
+- `TraceParent::$parentId` is renamed `$spanId`; `TraceParent::toRequestId()` is removed.
+- `TraceStamp` is `(traceParent, ?traceState, ?baggage)`; `$requestId` and `$requestFrom` are removed.
+- A consumed message without a `TraceStamp` starts a new trace; a `sync://` message without one keeps the
+  dispatching unit's runtime id and runs as its child span.
+- Sentry events carry `runtime_id` and `caller` in `extra` (`request_id`, `request_from` removed).
+- `symfony/uid` is no longer required.
+- bundle-standard v3: deptrac layers, `#[Override]` checked by PHPStan, reusable workflow `@v3.0.0`.
+
+### Added
+
+- `Domain\ValueObject\Baggage`: W3C Baggage received over HTTP and in `TraceStamp` is kept and forwarded
+  (invalid members dropped, 180 members / 8192 bytes); a caller-set `baggage` (Sentry's included) is sent as
+  given, followed by the caller member and the received members it does not name.
+- `Application\CallerName`, `Domain\ValueObject\OutgoingTrace`.
+- `TraceParent::HEADER`, `TraceParent::RESPONSE_HEADER`, `TraceState::HEADER`, `Baggage::HEADER`.
+- README «Public API»; bundle-standard `doc/decoration-priorities.md` registers the `http_client.transport`
+  priority (-15).
+
 ## [1.3.0] - 2026-10-14
 
 ### Changed
@@ -70,6 +128,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.0.0-rc.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.0.0-rc.1
 [1.3.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.3.0
 [1.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.2.0
 [1.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.1.0

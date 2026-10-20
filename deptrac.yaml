@@ -2,24 +2,36 @@ deptrac:
     paths:
         - ./src
 
-    exclude_files:
-        - '#.*test.*#i'
-
     layers:
-        - name: Storage
+        - name: Domain
           collectors:
               - type: directory
-                value: src/Storage/.*
+                value: src/Domain/(Entity|Document|ValueObject|Enum|Event|Repository|DocumentRepository)/.*
 
-        - name: EventListener
+        - name: DomainService
           collectors:
               - type: directory
-                value: src/EventListener/.*
+                value: src/Domain/(Service|Helper|Specification)/.*
 
-        - name: Integrations
+        - name: Application
           collectors:
               - type: directory
-                value: src/(HttpClient|GuzzleHttp|Messenger|Monolog|Sentry)/.*
+                value: src/Application/.*
+
+        - name: Infrastructure
+          collectors:
+              - type: directory
+                value: src/Infrastructure/.*
+
+        - name: Presentation
+          collectors:
+              - type: directory
+                value: src/Presentation/.*
+
+        - name: Framework
+          collectors:
+              - type: directory
+                value: src/Framework/.*
 
         - name: DependencyInjection
           collectors:
@@ -29,26 +41,35 @@ deptrac:
         - name: BundleRoot
           collectors:
               - type: classLike
-                value: Msstc4Symfony\\TracingBundle\\TracingBundle
+                value: '^Msstc4Symfony\\TracingBundle\\TracingBundle$'
 
-    # Status quo of phase A (spec 6.2): records the current layering and blocks new directions.
     ruleset:
-        # The trace context depends on nothing in-bundle.
-        Storage: ~
+        # W3C traceparent, tracestate, baggage and the trace context of a unit of work.
+        Domain: ~
 
-        # Listeners read and write the context; header names live on HTTPRequestListener.
-        EventListener:
-            - Storage
+        # The trace context holder port and this service's caller name.
+        Application:
+            - Domain
 
-        # Each integration propagates the context through one library.
-        Integrations:
-            - Storage
-            - EventListener
+        # In-memory holder, HttpClient decorator and Guzzle middleware.
+        Infrastructure:
+            - Domain
+            - Application
 
-        # Compiler passes register the integration decorators/configurators.
+        # Messenger middleware and stamp, Monolog processor, Sentry integration.
+        Framework:
+            - Domain
+            - Application
+
+        # HTTP kernel and console listeners.
+        Presentation:
+            - Domain
+            - Application
+
+        # Passes wire the HttpClient decorator and the Guzzle middleware.
         DependencyInjection:
-            - Storage
-            - Integrations
+            - Application
+            - Infrastructure
 
         BundleRoot:
             - DependencyInjection

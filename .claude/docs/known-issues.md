@@ -4,8 +4,8 @@
 
 - Пассы: `getClass() instanceof Interface` на строке класса никогда не истинно — декораторы не
   регистрируются; ссылка на `$id` вместо `.inner` даёт цикл.
-- `HttpClientDecorator::withOptions()` обязан возвращать декорированный клиент.
-- `HTTPRequestListener` не сбрасывает контекст на подзапросах.
+- `TraceHttpClientDecorator::withOptions()` обязан возвращать декорированный клиент.
+- `HttpTraceListener` не сбрасывает контекст на подзапросах.
 - Тег `messenger.middleware` Symfony не обрабатывает — middleware перечисляют в
   `buses.*.middleware`; без сброса на входе id предыдущего сообщения протекает в следующее.
 - Без сброса контекста между запросами (`kernel.reset`) долгоживущие воркеры переносят id.
@@ -18,7 +18,7 @@
 сообщения, на котором сработал сброс пачки. Разделить трассу по сообщениям пачки нельзя:
 обработчик видит их одним вызовом.
 
-## Ревью 2026-10-01: первый вариант Incoming-middleware ломал трассы
+## Ревью 2026-10-01 (1.x): первый вариант Incoming-middleware ломал трассы
 
 Сброс в `finally` после каждого полученного сообщения: при `sync://` из HTTP-запроса
 затирал контекст запроса (ответ уходил с чужим `request-id`), а сообщения из
@@ -59,7 +59,7 @@ PHPStan гоняется на Guzzle 8 (CI-профиль, highest): `method_exi
 Проверка тестами — по поведению: `ContainerCompileTest::assertSendsTheTrace()` подменяет
 транспорт стека (`setHandler(RecordingGuzzleTransport)`) и смотрит заголовки.
 
-## Эквивалентный мутант `RequestIdGuzzleHandler::decorateHandler()`
+## Эквивалентный мутант `TraceGuzzleMiddleware::decorateHandler()`
 
 `remove(MIDDLEWARE_NAME)` перед `push()` не убить: второй экземпляр middleware видит уже
 выставленные заголовки и ничего не добавляет. `remove()` держит стек без дублей, когда один
@@ -104,26 +104,26 @@ fallback-логгер FrameworkBundle пишет debug в stderr. Итог 2026-
 выкладки консьюмеров первыми: `unserialize` в `readonly`-класс без такого свойства →
 `Error: Cannot create dynamic property`.
 
-## sync:// без штампа (ревью 2026-10-02 UTC)
+## sync:// без штампа (ревью 2026-10-02 UTC; в 2.0 — `withChildSpan()` внешнего контекста, тот же runtime id)
 
-Шина без `OutgoingStampMiddleware` даёт sync-сообщение без штампа; `enter()` делает `reset()`.
-`IncomingStampMiddleware` для такой вложенной единицы продолжает трассу внешней
+Шина без `OutgoingTraceMiddleware` даёт sync-сообщение без штампа; `enter()` делает `reset()`.
+`IncomingTraceMiddleware` для такой вложенной единицы продолжает трассу внешней
 (`continueTrace(outer->traceParent)`, дочерний span); внешний `traceParent` перед снимком
 и request id запускаются, чтобы обе стороны делили trace-id и request id/from.
 
-## Логи до `HTTPRequestListener` (2026-10-02 UTC)
+## Логи до `HttpTraceListener` (2026-10-02 UTC)
 
 Безусловный `reset()` в слушателе выбрасывал бы лениво созданные runtime/request/trace id
 записей, сделанных до него (загрузка ядра, request-слушатели с бо́льшим priority). Поэтому
 `reset()` — только если с предыдущего главного запроса не было `kernel.reset` (флаг, см.
 architecture.md), priority 2048. Ловят
-`HTTPRequestListenerTest::testKeepsTheIdsLoggedBeforeTheListener` и
+`HttpTraceListenerTest::testKeepsTheIdsLoggedBeforeTheListener` и
 `ContainerCompileTest::testLogsBeforeTheTracingListenerShareTheRequestTrace` (`EarlyLogListener`,
 priority 100000).
 
 Что осталось и не исправимо без нарушения BC:
-- при входящих `request-id`/`traceparent` записи до слушателя несут сгенерированные request id и
-  trace id (заголовки ещё не прочитаны); общий у них с остальным запросом только runtime id.
+- при входящем `traceparent` записи до слушателя несут сгенерированный trace id (заголовки ещё не
+  прочитаны); общий у них с остальным запросом только runtime id (`continuing()` его сохраняет).
   Окно — загрузка ядра и request-слушатели с priority > 2048 (например, `TracingRequestListener`
   sentry-symfony, 4097);
 - если главный запрос — первый для слушателя или первый после `kernel.reset`, а между ними в
@@ -132,8 +132,8 @@ priority 100000).
   «юнит открыт сбросом» не знает, что хранилище с тех пор сбрасывали. `Kernel` сбрасывает
   сервисы только перед 2-м и следующими `handle()`. Без `kernel.reset` между запросами сброс есть
   всегда;
-- `ConsoleSubscriber` по-прежнему всегда делает `reset()` + `generate()` — записи до
-  `ConsoleEvents::COMMAND` (priority 100) получают другие id.
+- `ConsoleTraceSubscriber` всегда делает `reset()` — записи до `ConsoleEvents::COMMAND` (priority 100)
+  получают другие id.
 
 ## Эквивалентный мутант `TraceParent::randomId()`
 
@@ -166,23 +166,23 @@ priority 100000).
 Самопроверка уровня medium (агент `acc:code-review-coordinator` недоступен в среде — нет Task-инструмента):
 сообщение `GuzzlePass` в compiler log уточнено (клиент `GuzzleHttp\Client` с конфигом-параметром
 тоже уходит в ветку `getConfig()`), добавлен тест `testConfiguresAClientWhoseConfigIsAParameter`.
-Отклонено: эквивалентные мутанты priority ±1 в `HTTPRequestListener::getSubscribedEvents()`.
+Отклонено: эквивалентные мутанты priority ±1 в `HttpTraceListener::getSubscribedEvents()`.
 
-## Повторное ревью Guzzle 8 и `HTTPRequestListener` (2026-10-02 UTC)
+## Повторное ревью Guzzle 8 и `HttpTraceListener` (2026-10-02 UTC)
 
 Исправлено:
 - `GuzzlePass`: ветка `'$config'` убрана — pass стоит на `TYPE_BEFORE_REMOVING`, к этому моменту
   `ResolveNamedArgumentsPass` уже перенёс именованный аргумент в индекс 0. Изолированный тест
   заменён на `CompilerPassesTest::testTracesANamedConfigArgumentOnceTheContainerResolvedIt`
   (полный `compile()`). Формат лога — `UNREACHABLE_CLIENT_LOG`.
-- `HTTPRequestListener`: флаг `kernel.reset` вместо сравнения runtime id (см. architecture.md);
+- `HttpTraceListener`: флаг `kernel.reset` вместо сравнения runtime id (см. architecture.md);
   RED: `testDoesNotInheritAUnitThatRanBetweenRequestsWithoutAKernelReset`. Тег `kernel.reset`
   ловит `ContainerCompileTest::testLogsBeforeTheTracingListenerShareTheTraceOfTheNextRequest`.
 - «Ровно один middleware»: заголовки этого не видят (второй middleware не перезаписывает их), а
   у `HandlerStack` Guzzle 8 нет `__toString()` — тест считает записи приватного `$stack`
   через reflection (`tracingMiddlewareCount()`).
 - Порядок в `ChainedClientConfigurator`: конфигуратор приложения шлёт запрос и видит, что
-  `request-id` ещё нет.
+  `traceparent` ещё нет (в 1.x проверялся `request-id`).
 - `ChainedClientConfigurator`: `callable(ClientInterface): void` вместо `mixed`.
 
 Отклонено:
@@ -198,11 +198,8 @@ priority 100000).
 
 - Исходящий `traceparent` раньше был `child()` на каждый вызов; этот клиентский span id никто не логировал,
   и `parent_span_id` получателя указывал в пустоту. С 1.1.0 исходящий = свой span единицы работы.
-- `RequestIdProcessor` читает родителя через `snapshot()`: метод `getParentSpanId()` в интерфейсе сломал бы
-  сторонние реализации. Цена — `TraceContext` и `preg_match` на каждую запись лога. Отложено до 2.0:
-  добавить `getParentSpanId()` в `RequestIdServiceInterface` и читать напрямую.
-- Сторонняя реализация с невалидным span id в `snapshot()` уронит процессор на каждой записи — требование
-  формата записано в CHANGELOG (Upgrading) и в `@throws` конструктора `TraceContext`.
+- 1.x: `TraceLogProcessor` читал родителя через `snapshot()` (BC интерфейса). В 2.0 — поле
+  `TraceContext::$parentSpanId` напрямую, без проверки на каждую запись.
 - **Код должен разбираться на PHP 8.2** (с 2026-10-14 UTC, bundle-standard v2.0.0, профиль `php82`): без
   типизированных констант (`const string X`), без `new readonly class` (оба — 8.3) и без `new X()->m()` /
   `new X()(...)` (8.4) — только `(new X())->m()`. PHPStan (`phpVersion.min: 80200`) ловит типизированные
@@ -211,3 +208,22 @@ priority 100000).
   `#[Override]` (8.3) допустим: на 8.2 атрибут не инстанцируется. `array_any/all/find` (8.4) — только с
   `symfony/polyfill-php84` в `require`. Symfony 8 ставится только на PHP 8.4+.
   В tracing-bundle `array_find` только в тесте → `symfony/polyfill-php84` в `require-dev`.
+
+## 2.0 (B3, 2026-10-20 UTC)
+
+- **HttpClient оставляет только последнюю из повторённых строк `Name: value`.** `HttpClientTrait::normalizeHeaders()`
+  для каждой записи списка делает `$normalized[$lcName] = [...]`, так что вторая строка `baggage: …` затирает
+  первую. Поэтому член caller дописывается в ту же строку/значение (`, msstc4symfony.caller=…`). Ловит
+  `TraceHttpClientDecoratorTest::testAddsTheCallerToABaggageLineTheCallerSet`.
+- `rawurlencode()` кодирует `:` → caller уходит как `msstc4symfony.caller=shop%3Aapi`; получатель декодирует.
+- Sentry SDK сам кладёт члены `sentry-*` в `baggage` (sentry-symfony — на `http_client`, до транспорта;
+  `GuzzleTracingMiddleware` — `withHeader`, заменяя). Поэтому заданный baggage дополняется `except()`-членами;
+  в Guzzle middleware Sentry должен выполняться раньше нашего. `ScopingHttpClient` превращает `headers` в строки
+  `Name: value` — список значений baggage приходит несколькими строками (ловят `testKeepsEveryBaggageValueOfAScopedClient`).
+- Upgrade 1.x → 2.0: штамп переехал — сообщения в очереди не декодируются; дренировать транспорты (CHANGELOG).
+- Security-ревью (фон): полный проброс baggage на любые хосты — решение владельца T-D3 (README/SECURITY §2
+  описывают риск); инъекция заголовков невозможна — грамматика `Baggage` отсекает CTL/CR/LF/`"`/`,`/`;`/`\`,
+  на выходе `rawurlencode` (`BaggageTest::testNeverEmitsAHeaderBreakingCharacter`).
+- Роутинг классов Domain: только подкаталоги (`ValueObject`), иначе `verify-standard` v3 и deptrac их не видят.
+- move-classes.php: при пересечении префиксной и классовой строки карты побеждает префикс (класс уходит
+  под старым именем) — переименовывать вручную `git mv` или класть классовые строки в отдельный прогон.

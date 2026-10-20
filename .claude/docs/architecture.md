@@ -1,113 +1,95 @@
-# Архитектура
+# Архитектура (2.0)
 
-## Слои (`deptrac.yaml`)
+Спек: `../docs/superpowers/specs/2026-10-20-tracing-2-w3c-design.md` (B3). Только W3C Trace Context + W3C
+Baggage; `request-id`/`request-from` удалены в 2.0.
 
-| Слой | Что | Зависит от |
+## Слои (`deptrac.yaml` = шаблон bundle-standard v3)
+
+| Слой | Классы | Зависит от |
 |---|---|---|
-| `Storage` | `RequestIdService(Interface)` (request id + W3C), `TraceContext`, `W3c\TraceParent`/`TraceState` — контекст трассы | — |
-| `EventListener` | вход HTTP/консоли; константы имён заголовков | `Storage` |
-| `Integrations` | `HttpClient`, `GuzzleHttp`, `Messenger`, `Monolog`, `Sentry` | `Storage`, `EventListener` |
-| `DependencyInjection` | `HttpClientPass`, `GuzzlePass` | `Storage`, `Integrations` |
-| корень | `TracingBundle` | `DependencyInjection` |
+| Domain (`Domain/ValueObject/`) | `TraceParent`, `TraceState`, `Baggage`, `TraceContext`, `OutgoingTrace` | — |
+| Application | `Port\TraceContextHolderInterface`, `CallerName` | Domain |
+| Infrastructure | `Context\InMemoryTraceContextHolder`, `HttpClient\TraceHttpClientDecorator`, `Guzzle\TraceGuzzleMiddleware`, `Guzzle\ChainedClientConfigurator` | Domain, Application |
+| Presentation | `EventListener\HttpTraceListener`, `EventListener\ConsoleTraceSubscriber` | Domain, Application |
+| Framework | `Messenger\{Incoming,Outgoing}TraceMiddleware`, `Messenger\TraceStamp`, `Messenger\WorkerTraceSubscriber`, `Monolog\TraceLogProcessor`, `Sentry\TracingIntegration` | Domain, Application |
+| DependencyInjection | `CompilerPass\HttpClientPass`, `CompilerPass\GuzzlePass` | Application, Infrastructure |
+| BundleRoot | `TracingBundle` | DependencyInjection |
+
+Классы Domain лежат в `Domain/ValueObject/`, а не в корне `Domain/`: `SourceLayoutRule` и коллектор deptrac
+шаблона принимают только `Domain/(Entity|Document|ValueObject|Enum|Event|Repository|DocumentRepository|Service|Helper|Specification)`.
+`WorkerTraceSubscriber` — во Framework, а не в Presentation: он вызывает `IncomingTraceMiddleware::closeUnit()`,
+а Presentation → Framework запрещено.
+
+Public API (без `@internal`): Domain целиком, порт, `CallerName`, Messenger-middleware и `TraceStamp`,
+`TracingIntegration`, `TraceGuzzleMiddleware`, `TracingBundle`. Список — README «Public API».
+
+## Модель
+
+- `TraceContext` (final readonly, приватный конструктор): `runtimeId` (UUID v4 из `random_bytes`), `traceParent`
+  (span этой единицы: trace id + **свой** `spanId` + flags), `remoteTraceParent` (как пришёл), `traceState`,
+  `baggage`, `parentSpanId` (span отправителя, `null` у корня).
+  - `start()` — всё новое; `continuing($received, $state, $baggage)` — **тот же runtimeId**, trace отправителя,
+    `parentSpanId = $received->spanId`; `withBaggage()`; `withChildSpan()` — тот же runtime/trace/baggage, новый
+    span, родитель — этот span; `caller()` — член baggage `msstc4symfony.caller`; `outgoing(string $caller)` →
+    `OutgoingTrace(traceParent = этот span, traceState, baggage->with(caller))`.
+  - Ленивых полей нет — 1.x-грабли «id, созданный во вложенной единице, теряется при restore()» исчезли.
+- `TraceContextHolderInterface` (`ResetInterface`): `current()` (никогда не null, держатель стартует контекст в
+  конструкторе), `replace()`, `reset()` = `replace(TraceContext::start())`. Вложенная единица:
+  `$outer = current(); replace($outer->withChildSpan()); try … finally replace($outer)`.
+- `Baggage`: члены `key => {value (decoded), properties (raw)}`; невалидный член отбрасывается поштучно;
+  > 180 членов / > 8192 байт — с конца; `with()` заменяет на месте или добавляет **в начало** (усечение с конца
+  не теряет caller); повтор ключа — первая позиция, последнее значение; значения `rawurlencode` (`:` → `%3A`).
+- `CallerName::$value` = `application_name:component_name` (параметры `msstc4symfony_tracing.*`, умолчание
+  `unknown`); Domain его не видит — `outgoing()` принимает строку.
 
 ## Жизненный цикл контекста
 
-`reset()` = новый runtime id + забыть request id/from. Вызывается: `kernel.reset`,
-главный HTTP-запрос (условно, см. ниже), консольная команда, перед сообщением,
-полученным воркером, и при закрытии unit воркера (`WorkerTraceSubscriber`). Request id
-генерируется лениво.
+- `kernel.reset` → `InMemoryTraceContextHolder::reset()` (тег), `HttpTraceListener::reset()` (флаг).
+- HTTP (`kernel.request` 2048, главный запрос): флаг `$unitOpenedByReset` — `reset()` держателя только если
+  с предыдущего главного запроса не было `kernel.reset`; затем `current()->continuing(...)` при ровно одном
+  валидном `traceparent`, иначе `current()->withBaggage(...)` (tracestate отброшен, baggage сохранён). Runtime id
+  записей до слушателя сохраняется в обоих случаях.
+- Ответ (`kernel.response` 100, главный): `traceresponse = current()->traceParent->toHeader()`, если не задан.
+- Console (`ConsoleEvents::COMMAND` 100): `reset()`.
+- Messenger `IncomingTraceMiddleware` (счётчик вложенности, `unitOpen`):
+  - верхний уровень / вложенное со штампом: `TraceContext::start()->continuing(...)` при валидном traceparent
+    штампа, иначе `start()->withBaggage(baggage штампа)`; верхний уровень после обработки не сбрасывается;
+  - вложенное без штампа: `$outer->withChildSpan()` (тот же runtime id);
+  - вложенное: `finally replace($outer)`;
+  - `closeUnit()` (из `WorkerTraceSubscriber`: `WorkerMessageReceivedEvent` 4096, `WorkerRunningEvent`,
+    `WorkerStoppedEvent`) — `reset()` только при открытом unit и вложенности 0.
+- `OutgoingTraceMiddleware`: один `TraceStamp(traceParent, ?traceState, ?baggage)` на сообщение без
+  `ReceivedStamp` и без своего штампа.
 
-HTTP (`HTTPRequestListener`, `kernel.request` priority 2048): слушатель сам
-`ResetInterface` с тегом `kernel.reset` и держит флаг `$unitOpenedByReset` (true у нового
-объекта и после `kernel.reset`, false после главного запроса). `reset()` хранилища — только при
-false. При true контекст уже открыт заново (`services_resetter` в `Kernel::boot()` перед 2-м и
-следующими `handle()`, свежий процесс FPM) и записи, залогированные до слушателя, сохраняют
-runtime/request/trace id. Флаг, а не сравнение runtime id: консольная команда или сообщение in-process между запросами
-тоже меняют runtime id, и при сравнении следующий запрос без `kernel.reset` наследовал бы их ids. Заголовки
-`request-id`/`traceparent` перекрывают request id и trace id, runtime id остаётся.
+## Исходящие HTTP
 
-Messenger (`IncomingStampMiddleware`, счётчик вложенности):
-- сообщение верхнего уровня воркера (`ReceivedStamp`, вложенность 0) — сброс + трасса
-  из `TraceStamp` (без штампа — новая трасса, request id = её trace id в UUID-написании); **после обработки не сбрасывается**: лог ack/fail воркера и сообщения,
-  отпущенные `dispatch_after_current_bus`, остаются в трассе; unit закрывает `WorkerTraceSubscriber` →
-  `IncomingStampMiddleware::closeUnit()` на `WorkerMessageReceivedEvent` (priority 4096),
-  `WorkerRunningEvent`, `WorkerStoppedEvent` — только если unit открыт и вложенность 0, так что
-  idle-тики не меняют трассу (до первого сообщения — трасса команды, после — одна свежая);
-- сообщение, полученное внутри другой единицы работы (`sync://` из HTTP или из другого
-  обработчика) — снимок `snapshot()` до, `restore()` после; без штампа — request id/from внешней
-  единицы и дочерний span её трассы (`continueTrace(outer->traceParent)`).
-- `OutgoingStampMiddleware` ставит один `TraceStamp(requestId, requestFrom, traceParent,
-  ?traceState)` на каждое отправляемое сообщение без `ReceivedStamp` и без своего `TraceStamp`.
+- `HttpClientPass` декорирует только `http_client.transport`, priority −15 — реестр
+  `bundle-standard/doc/decoration-priorities.md` (−10 `mock_response_factory`, −20 metrics). Декораторы
+  семейства не зависят от взаимного порядка.
+- `traceparent` — если не задан вызывающим; `tracestate` — только вместе с нашим traceparent и если не задан.
+- `baggage`: нет у вызывающего → весь накопленный (с caller); есть → значения вызывающего как есть, за ними
+  `baggage->except(заданный)` (caller и принятые члены, которых там нет), всё одним ключом `baggage` (строки
+  `baggage: …` удаляются — `normalizeHeaders` оставил бы последнюю). Так клиентский baggage Sentry (`sentry-*`,
+  ставится на `http_client` до транспорта) не отрезает принятые члены. `Stringable`-значения читаются как строки.
+- Guzzle (`GuzzlePass`, `TYPE_BEFORE_REMOVING`): три пути как в 1.x — `handler` в конфиге конструктора
+  `GuzzleHttp\Client` (inline `Definition(HandlerStack)` с factory `decorateHandler`), configurator `addHandler`
+  (с `ChainedClientConfigurator`, если у клиента свой), иначе запись в compiler log. PSR-7: при заданном
+  baggage недостающие члены → `withAddedHeader()`. `GuzzleTracingMiddleware` Sentry *заменяет* `baggage` — он
+  должен выполняться раньше нашего (README).
 
-## Точки проводки
+## Логи и Sentry
 
-- `services.php` — явная регистрация; Guzzle/Messenger/Sentry только если библиотека есть.
-- `HttpClientPass` декорирует только `http_client.transport`, приоритет -15: снаружи мока
-  `mock_response_factory` (-10). metrics-bundle сидит на -20 (ещё снаружи).
-- `GuzzlePass` (`TYPE_BEFORE_REMOVING` — после разрешения `parent:`; класс через
-  `getReflectionClass($class, false)`, без автозагрузки в фатал), для каждого не-абстрактного
-  сервиса с классом `GuzzleHttp\ClientInterface` (Guzzle 7 и 8):
-  1. без factory и конструктор объявлен в `GuzzleHttp\Client` → в аргумент `0`/`$config`
-     (массив) кладётся `handler` = inline-`Definition(HandlerStack)` с factory
-     `[RequestIdGuzzleHandler, 'decorateHandler']` и аргументом — прежний `handler` или `null`.
-     Configurator приложения не трогается;
-  2. иначе, если у класса есть `getConfig()` → configurator `addHandler`, а при уже заданном —
-     inline `ChainedClientConfigurator(свой, RequestIdGuzzleHandler)` (`@internal`): сначала свой;
-  3. иначе (Guzzle 8, свой `ClientInterface` без `getConfig()`) — `$container->log()`, клиент не
-     трассируется.
-  `decorateHandler()`: `HandlerStack` → remove+push middleware (идемпотентно, тот же объект),
-  `null` → `HandlerStack::create()` + middleware, голый callable → без изменений
-  (`getConfig('handler')` должен вернуть то, что дали, например `MockHandler` для `append()`).
-- Messenger-middleware **не** подключаются сами: их перечисляют в `buses.*.middleware`.
+- `TraceLogProcessor` (`monolog.processor`): `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller`.
+  Остальной baggage не логируется.
+- `TracingIntegration` (opt-in, `sentry.options.integrations`): `extra` `runtime_id`, `caller` (через `+`);
+  теги `trace_id`/`span_id`, если на событии нет ни одного из них. Контекст `trace` не трогается.
 
 ## Конфиг
 
-Корень `msstc4symfony_tracing` (`$extensionAlias`): `application_name`, `component_name`
-(умолчания `%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME|COMPONENT_NAME)%`;
-параметр `msstc4symfony_tracing.unknown` = `'unknown'` задан в `services.php`).
-`loadExtension()` кладёт их в параметры `msstc4symfony_tracing.application_name` /
-`.component_name`, которые `RequestIdService` читает через `#[Autowire(param:)]`.
-Выключателя W3C нет: ключ `w3c_trace_context` не входит в дерево конфигурации, его задание даёт
-`InvalidConfigurationException` (окружение `legacy_w3c` в `W3cTraceContextTest`).
-
-## W3C Trace Context (всегда включён)
-
-- Состояние W3C живёт в `RequestIdService` и входит в контракт `RequestIdServiceInterface`
-  (`continueTrace`, `getTraceParent`, `getRemoteTraceParent`, `getTraceState`,
-  `createOutgoingTraceParent`); отдельного интерфейса, алиаса и пасса нет. Все семь
-  интеграций (`HTTPRequestListener`, оба Messenger-middleware, `RequestIdGuzzleHandler`,
-  `HttpClientDecorator`, `RequestIdProcessor`, `TracingIntegration`) зависят только от
-  `RequestIdServiceInterface`; `HttpClientPass` передаёт обычную ссылку. Три
-  поля — `traceParent` (спан этой единицы работы: trace-id + **свой** span id в поле
-  `parentId` + flags; лениво `TraceParent::start()`), `remoteTraceParent` (как пришёл),
-  `traceState`, плюс `parentSpanId` (span id отправителя из `continueTrace()`, `null` у корня;
-  с v1.1.0; `TraceContext` проверяет формат W3C span id, а `restore()` отбрасывает родителя,
-  если в контексте нет `traceParent` — иначе в логах было бы ребро из чужого trace;
-  формат — `TraceParent::isSpanId()`, единственный источник правила).
-  `resetRequestData()`/`reset()` чистят их, `snapshot()`/`restore()` несут их через поля `TraceContext` (`parentSpanId` — необязательный последний параметр) →
-  sync-сообщения и воркеры не требуют отдельной логики.
-  `TraceContext::withChildSpan()` (v1.2.0) — копия для вложенной единицы работы: `traceParent->child()`,
-  `parentSpanId` = span этого контекста, остальное как есть; без `traceParent` — `LogicException`
-  (лениво созданный trace внутри вложенной единицы `restore()` выбросил бы). Перед `snapshot()` нужны и
-  `getTraceParent()`, и `getRequestId()`: request id тоже ленивый (`ensureContext()`), созданный внутри вложенной
-  единицы он потеряется при `restore($outer)`, и логи одного запроса разойдутся. Пользователь —
-  `tracing-bridge-logic` (span на каждый Action); новое поле `TraceContext` надо копировать и здесь.
-- `TraceState` хранит члены как пришли, но валидирует грамматику, дубликаты ключей, ≤ 32;
-  > 512 символов — усечение (сначала члены > 128 с конца, затем с конца). Флаги `TraceParent`
-  маскируются до `0x03` (sampled|random).
-- Исходящий `traceparent` = `getTraceParent()` (с v1.1.0; в 1.0.0 был `->child()`): span
-  единицы работы как есть, так что `parent_span_id` получателя — это `span_id` в логах
-  отправителя, и дерево по логам сквозное между процессами (экспорта span нет, клиентский span
-  никто бы не залогировал). Логи: `trace_id`, `span_id` (свой span), `parent_span_id`
-  (`snapshot()->parentSpanId` — нового метода в интерфейсе нет ради BC сторонних реализаций).
-- Sentry: `TracingIntegration(RequestIdServiceInterface)` в
-  глобальном event processor ставит **теги** `trace_id`/`span_id` (те же значения, что в логах),
-  читая хранилище в момент захвата события; если на событии уже есть `trace_id` или `span_id`, не
-  добавляется ни один (пара не смешивает источники; ревью CR-001). На `Scope` ничего не
-  пишется — поэтому утечки между unit'ами нет, сброс — общий `reset()`. Контекст `trace`
-  события не трогаем (см. known-issues).
+Корень `msstc4symfony_tracing`: `application_name`, `component_name`
+(`%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME|COMPONENT_NAME)%`, параметр `…unknown = 'unknown'`
+в `services.php`). Ключ `w3c_trace_context` не существует (`InvalidConfigurationException`).
 
 ## Не-final классы
 
-Нет: все конкретные классы `src/` — `final` или `final readonly`. `ChainedClientConfigurator` —
-`final` и `@internal` (не точка расширения).
+Нет: все классы `src/` — `final` или `final readonly`.

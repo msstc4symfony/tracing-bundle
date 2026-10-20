@@ -5,8 +5,8 @@ Guidance for Claude Code in this repository. Deep references live under `.claude
 ## What this is
 
 Symfony bundle (`msstc4symfony/tracing-bundle`, namespace `Msstc4Symfony\TracingBundle`)
-that propagates a trace context — request id, caller (`request from`) and runtime id —
-across HTTP (in and out), Messenger, Monolog and Sentry. PHP >= 8.2, Symfony 7.4 / 8.x.
+that propagates W3C Trace Context and W3C Baggage (plus a per-unit runtime id and the caller as baggage member
+`msstc4symfony.caller`) across HTTP (in and out), Messenger, Monolog and Sentry. PHP >= 8.2, Symfony 7.4 / 8.x.
 Library code only.
 
 ## Common commands
@@ -19,20 +19,19 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 
 ## Architecture in 60 seconds
 
-- `Storage\RequestIdService` holds the context; `ResetInterface` + `kernel.reset` tag.
-- Entry points reset it: `HTTPRequestListener` (main request only, and only when no `kernel.reset`
-  ran since the previous main request — early logs keep their ids; the listener is itself
-  `kernel.reset`-tagged), `ConsoleSubscriber`,
-  `IncomingStampMiddleware` (only for messages with `ReceivedStamp`).
-- Exits read it: `HttpClient\HttpClientDecorator` on `http_client.transport` (priority -15),
-  Guzzle middleware via the client's `handler` config or, for factory-built clients, a service
-  configurator (`GuzzlePass`, Guzzle 7 and 8), `OutgoingStampMiddleware`,
-  `RequestIdProcessor`, `TracingIntegration` (W3C → Sentry tags `trace_id`/`span_id`).
-- W3C Trace Context is always on and part of `RequestIdServiceInterface` (state in
-  `RequestIdService`); every integration depends on that interface only. Messenger carries one
-  `TraceStamp(requestId, requestFrom, traceParent, ?traceState)`.
-- Config `msstc4symfony_tracing`: `application_name` / `component_name` (env defaults) →
-  parameters read by `RequestIdService`.
+- Canonical hex layers (bundle-standard v3): `Domain/ValueObject` (`TraceContext`, `TraceParent`, `TraceState`,
+  `Baggage`, `OutgoingTrace` — immutable), `Application` (`Port\TraceContextHolderInterface`, `CallerName`),
+  `Infrastructure`, `Presentation`, `Framework`, `DependencyInjection`.
+- `InMemoryTraceContextHolder` holds the current `TraceContext`; `kernel.reset` tag. Nested units:
+  `$outer = current(); replace($outer->withChildSpan()); try … finally replace($outer)`.
+- Entry points: `HttpTraceListener` (main request only, resets only when no `kernel.reset` ran since the previous
+  main request; `continuing()` keeps the runtime id of early logs; sends `traceresponse`), `ConsoleTraceSubscriber`,
+  `IncomingTraceMiddleware` (messages with `ReceivedStamp`).
+- Exits: `TraceHttpClientDecorator` on `http_client.transport` (priority -15, registry in
+  `bundle-standard/doc/decoration-priorities.md`), Guzzle middleware via `GuzzlePass` (Guzzle 7 and 8),
+  `OutgoingTraceMiddleware` (`TraceStamp(traceParent, ?traceState, ?baggage)`), `TraceLogProcessor`,
+  `TracingIntegration` (Sentry tags `trace_id`/`span_id`).
+- Config `msstc4symfony_tracing`: `application_name` / `component_name` (env defaults) → `CallerName`.
 - `Resources/config/services.php` registers optional integrations behind `interface_exists`.
   Rector's `FromServicePublicToDefaultsPublicRector` and `ServiceSettersToSettersAutodiscoveryRector`
   are skipped on purpose — they rewrite this file into public autodiscovery.

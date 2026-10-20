@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle;
 
-use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\GuzzlePass;
-use Msstc4Symfony\TracingBundle\DependencyInjection\Compiler\HttpClientPass;
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\HttpClientPass;
 use Override;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
@@ -33,12 +33,12 @@ final class TracingBundle extends AbstractBundle
         $definition->rootNode()
             ->children()
                 ->stringNode('application_name')
-                    ->info('First half of the request-from value this service sends downstream.')
+                    ->info('First half of the caller name this service sends downstream in W3C baggage.')
                     ->defaultValue('%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME)%')
                     ->cannotBeEmpty()
                 ->end()
                 ->stringNode('component_name')
-                    ->info('Second half of the request-from value this service sends downstream.')
+                    ->info('Second half of the caller name this service sends downstream in W3C baggage.')
                     ->defaultValue('%env(default:msstc4symfony_tracing.unknown:COMPONENT_NAME)%')
                     ->cannotBeEmpty()
                 ->end()
