@@ -156,7 +156,8 @@ msstc4symfony_tracing:
   (`when@prod`) replaces the earlier one. An invalid entry (a port, a URL, a `*` elsewhere, `*.` over
   numbers, non-ASCII: write IDNs in punycode) fails the container build. Entries may use `%env()%`, the
   list as a whole cannot; such an entry is checked when the HTTP client is first built, and an invalid or
-  unset value makes building it fail;
+  unset value makes building it fail. A processor of no fixed type needs `string:` in front, as in
+  `'%env(string:key:host:url:ORDERS_URL)%'`;
 * a host not on the list gets no `baggage` from the bundle, not even `msstc4symfony.caller`. A `baggage`
   header the caller set (Sentry's, for one) is sent unchanged, redirects included: the list limits the members
   the bundle adds, not the caller's own headers. `traceparent` and `tracestate` still go to
