@@ -17,7 +17,9 @@ use Symfony\Contracts\Service\ResetInterface;
 /**
  * Adds the trace headers to every outgoing request unless the caller set them, and baggage only for the hosts
  * BaggageRecipients allows. A request that carries this bundle's baggage follows its redirects in RedirectFollower
- * rather than in the transport, which would send the same baggage to whichever host the redirect names.
+ * rather than in the transport, which would send the same baggage to whichever host the redirect names. An NTLM
+ * request gets no baggage of this bundle: curl cannot finish the handshake with CURLOPT_MAXREDIRS 0, so its
+ * redirects stay with the transport.
  *
  * Every response is an AsyncResponse of the one inner client — withOptions() keeps its options here rather than in a
  * copy of the inner client — so stream() interleaves them all, as the transport would.
@@ -67,7 +69,7 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
         $baseUri = $options['base_uri'] ?? null;
         $target = RequestUrl::resolve($url, is_string($baseUri) || is_array($baseUri) ? $baseUri : null);
         $trace = $this->holder->current()->outgoing($this->caller->value);
-        $withBaggage = $target instanceof RequestUrl && $this->recipients->allows($target->host);
+        $withBaggage = !$this->usesNtlm($options) && $target instanceof RequestUrl && $this->recipients->allows($target->host);
         $maxRedirects = is_numeric($options['max_redirects'] ?? null) ? (int) $options['max_redirects'] : $this->maxRedirects;
 
         $sent = $options;
@@ -87,10 +89,17 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
             $headers,
             $options,
             $maxRedirects,
-            $this->ntlmDefault || ($options['auth_ntlm'] ?? null) !== null,
         );
 
         return new AsyncResponse($this->client, $method, $url, $sent, $follower);
+    }
+
+    /**
+     * @param array<mixed> $options merged with withOptions(): a null of the request turns the transport's NTLM off
+     */
+    private function usesNtlm(array $options): bool
+    {
+        return array_key_exists('auth_ntlm', $options) ? $options['auth_ntlm'] !== null : $this->ntlmDefault;
     }
 
     /**

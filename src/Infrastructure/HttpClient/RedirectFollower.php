@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Infrastructure\HttpClient;
 
 use Generator;
+use LogicException;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
 use Symfony\Component\HttpClient\Response\AsyncContext;
@@ -17,7 +18,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  * the baggage BaggageRecipients allows for its host.
  *
  * It follows them as the native transport does: any 3xx but 304 with a Location; POST (anything on 303) turns into
- * GET without a body on 301, 302 and 303; Authorization, Cookie and the auth_* options — the inner client's
+ * GET without a body on 301, 302 and 303; Authorization, Cookie, auth_basic and auth_bearer — the inner client's
  * defaults included — go to the first origin only. Beyond the transport: the query option is not added to the
  * Location again, a seekable body is rewound before it is sent again, and a body that cannot be sent again (a
  * closure, an iterable, a pipe) ends the chain with the redirect response.
@@ -38,9 +39,6 @@ final class RedirectFollower
 
     private const CREDENTIAL_OPTIONS = ['auth_basic', 'auth_bearer'];
 
-    // Curl only: the native and amp transports reject the option even when null.
-    private const NTLM_OPTION = 'auth_ntlm';
-
     private RequestUrl $current;
 
     private int $redirects = 0;
@@ -56,7 +54,8 @@ final class RedirectFollower
     /**
      * @param array<mixed> $headers the caller's
      * @param array<mixed> $options the caller's
-     * @param bool $ntlmDefault whether the inner client has NTLM credentials of its own
+     *
+     * @throws LogicException for an auth_ntlm option: curl cannot finish an NTLM handshake with CURLOPT_MAXREDIRS 0
      */
     public function __construct(
         private readonly TraceHeaders $traceHeaders,
@@ -67,8 +66,11 @@ final class RedirectFollower
         private array $headers,
         private array $options,
         private readonly int $maxRedirects,
-        private readonly bool $ntlmDefault,
     ) {
+        if (($options['auth_ntlm'] ?? null) !== null) {
+            throw new LogicException('An NTLM request must leave its redirects to the transport.');
+        }
+
         $this->current = $first;
         // The Location is complete; the transports do not merge the query option into it either.
         unset($this->options['query']);
@@ -161,10 +163,6 @@ final class RedirectFollower
             $headers = $this->traceHeaders->blocking($headers, ...self::CREDENTIAL_HEADERS);
             foreach (self::CREDENTIAL_OPTIONS as $credential) {
                 $options[$credential] = null;
-            }
-
-            if ($this->ntlmDefault || array_key_exists(self::NTLM_OPTION, $options)) {
-                $options[self::NTLM_OPTION] = null;
             }
         }
 

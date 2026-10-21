@@ -35,3 +35,6 @@
   (классы из `doc/*.yaml` существуют).
 - Тесты каналов строят контекст через `new InMemoryTraceContextHolder()` и
   `$holder->replace($holder->current()->continuing(...))`; известный trace в kernel-тестах — `knownTrace()`.
+- `tests/Integration/CurlNtlmTest.php` — настоящий curl против `Fixtures/ntlm-server.php` (keep-alive NTLM-мок на
+  `stream_socket_server`, порт 0, печатает порт в stdout; `proc_open`/`proc_terminate`). `php -S` для NTLM не годится:
+  рвёт соединение после challenge. Проверяет, что NTLM-запрос на хост из списка завершает рукопожатие без baggage.

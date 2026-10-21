@@ -173,15 +173,17 @@ Redirects are checked hop by hop:
   bundle rather than in the transport, which would send the same headers to the new host. Each hop gets the
   baggage the list allows. The rules are the native transport's: any 3xx but 304 with a `Location` (the first
   one); POST (anything on 303) turns into a GET without body on 301 to 303; `max_redirects` of the request,
-  `withOptions()` or `framework.http_client.default_options`; `Authorization`, `Cookie`, `auth_basic`,
-  `auth_bearer` and `auth_ntlm` (the client's defaults too) go to the first origin only, and again when a hop
-  comes back to it. Differences: the `query` option is not added to the `Location` again; a body that cannot
-  be sent again (a closure, an iterable, a pipe or a `StreamableInterface`, also inside a form or an object of one) ends the chain
-  with the redirect response, a seekable stream is sent again from where it stood; `getInfo()` also has `previous_info`, and `total_time` is the last hop's.
-  With a list set every response is an `AsyncResponse` (as with Symfony's `RetryableHttpClient`). A request that
-  carries the bundle's baggage to a listed host with redirects on reports an idle timeout as a
-  `TransportException`, not a `TimeoutException`. NTLM authentication (curl's `auth_ntlm`) does not work with a
-  list set: `AsyncResponse` cannot carry curl's NTLM handshake (`LogicException`, as with `RetryableHttpClient`).
+  `withOptions()` or `framework.http_client.default_options`; `Authorization`, `Cookie`, `auth_basic` and
+  `auth_bearer` (the client's defaults too) go to the first origin only, and again when a hop comes back to it.
+  Differences: the `query` option is not added to the `Location` again; a body that cannot be sent again (a
+  closure, an iterable, a pipe or a `StreamableInterface`, also inside a form or an object of one) ends the
+  chain with the redirect response, a seekable stream is sent again from where it stood; `getInfo()` also has
+  `previous_info`, and `total_time` is the last hop's. With a list set every response is an `AsyncResponse` (as
+  with Symfony's `RetryableHttpClient`). A request that carries the bundle's baggage to a listed host with
+  redirects on reports an idle timeout as a `TransportException`, not a `TimeoutException`. A request with NTLM
+  authentication (curl's `auth_ntlm`, of the request, `withOptions()` or `default_options`) gets no baggage of
+  the bundle and leaves its redirects to the transport: curl cannot finish the NTLM handshake when it is told to
+  follow no redirect.
 * Guzzle: `allow_redirects` sends every hop through the bundle's middleware, which the bundle puts innermost. A
   stack built by hand must push `TraceGuzzleMiddleware::middleware()` after `allow_redirects` (`push()` puts it
   inside), or redirected requests keep the first host's baggage.

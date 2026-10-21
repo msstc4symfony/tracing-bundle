@@ -6,6 +6,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\Infrastructure\HttpClient;
 
 use ArrayIterator;
 use Closure;
+use LogicException;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
@@ -298,17 +299,13 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
         self::assertSame(['payments'], $this->sent[1]['headers']['host'] ?? ['payments'], "No Host header but the transport's own.");
     }
 
-    public function testGivesNtlmOnlyToTransportsThatWereGivenIt(): void
+    public function testGivesNoNtlmOptionToAHopOfARequestWithoutIt(): void
     {
         $this->responses = [$this->redirect(302, 'https://payments/y')];
+
         $this->decorator(['orders'])->request('GET', 'http://orders/x')->getStatusCode();
-        $this->responses = [$this->redirect(302, 'https://payments/y')];
-        $this->decorator(['orders'])->request('GET', 'http://orders/x', ['auth_ntlm' => 'user:pass'])->getStatusCode();
 
         self::assertFalse($this->sent[1]['ntlm'], 'The native transport rejects the option.');
-        self::assertSame('user:pass', $this->sent[2]['ntlmValue']);
-        self::assertTrue($this->sent[3]['ntlm']);
-        self::assertNull($this->sent[3]['ntlmValue']);
     }
 
     #[TestWith([300])]
@@ -341,24 +338,67 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
         self::assertStringNotContainsString('api_key', $this->sent[1]['url']);
     }
 
-    public function testDropsNtlmCredentialsGivenToWithOptionsOnAnotherOrigin(): void
-    {
+    /**
+     * @param array<string, string> $requestOptions
+     * @param array<string, string> $clientOptions
+     */
+    #[TestWith([['auth_ntlm' => 'user:pass'], [], false, 'user:pass'])]
+    #[TestWith([[], ['auth_ntlm' => 'user:pass'], false, 'user:pass'])]
+    #[TestWith([[], [], true, null])]
+    public function testSendsNoBaggageWithNtlmAndLeavesItsRedirectsToTheTransport(
+        array $requestOptions,
+        array $clientOptions,
+        bool $ntlmDefault,
+        ?string $sentNtlm,
+    ): void {
         $this->responses = [$this->redirect(302, 'https://payments/y')];
 
-        $this->decorator(['orders'])->withOptions(['auth_ntlm' => 'user:pass'])->request('GET', 'http://orders/x')->getStatusCode();
+        $client = $this->decorator(['orders'], ntlmDefault: $ntlmDefault);
+        $client = $clientOptions === [] ? $client : $client->withOptions($clientOptions);
 
-        self::assertTrue($this->sent[1]['ntlm']);
-        self::assertNull($this->sent[1]['ntlmValue']);
+        $status = $client->request('GET', 'http://orders/x', $requestOptions)->getStatusCode();
+
+        self::assertSame(302, $status);
+        self::assertCount(1, $this->sent);
+        self::assertArrayNotHasKey('baggage', $this->sent[0]['headers']);
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sent[0]['headers']['traceparent'] ?? null);
+        self::assertNull($this->sent[0]['maxRedirects']);
+        self::assertSame($sentNtlm, $this->sent[0]['ntlmValue']);
     }
 
-    public function testDropsNtlmCredentialsOfTheTransportOnAnotherOrigin(): void
+    /**
+     * @param array<string, null> $requestOptions
+     * @param array<string, string|null> $clientOptions
+     */
+    #[TestWith([['auth_ntlm' => null], [], true])]
+    #[TestWith([[], ['auth_ntlm' => null], true])]
+    #[TestWith([['auth_ntlm' => null], ['auth_ntlm' => 'user:pass'], false])]
+    public function testSendsTheBaggageWhenNtlmIsTurnedOff(array $requestOptions, array $clientOptions, bool $ntlmDefault): void
     {
-        $this->responses = [$this->redirect(302, 'https://payments/y')];
+        $client = $this->decorator(['orders'], ntlmDefault: $ntlmDefault);
+        $client = $clientOptions === [] ? $client : $client->withOptions($clientOptions);
+        $client->request('GET', 'http://orders/x', $requestOptions)->getStatusCode();
 
-        $this->decorator(['orders'], ntlmDefault: true)->request('GET', 'http://orders/x')->getStatusCode();
+        self::assertSame(['msstc4symfony.caller=orders%3Aapi,user=alice'], $this->sent[0]['headers']['baggage'] ?? null);
+        self::assertSame(0, $this->sent[0]['maxRedirects']);
+        self::assertTrue($this->sent[0]['ntlm']);
+        self::assertNull($this->sent[0]['ntlmValue']);
+    }
 
-        self::assertTrue($this->sent[1]['ntlm']);
-        self::assertNull($this->sent[1]['ntlmValue']);
+    public function testRefusesToFollowTheRedirectsOfAnNtlmRequest(): void
+    {
+        $this->expectException(LogicException::class);
+
+        new RedirectFollower(
+            new TraceHeaders(),
+            new BaggageRecipients(['orders']),
+            $this->holder->current()->outgoing('orders:api'),
+            RequestUrl::resolve('http://orders/x') ?? self::fail('Invalid fixture.'),
+            'GET',
+            [],
+            ['auth_ntlm' => 'user:pass'],
+            20,
+        );
     }
 
     public function testRewindsAStreamedBodyItSendsAgain(): void

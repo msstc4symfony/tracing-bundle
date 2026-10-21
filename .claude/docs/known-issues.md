@@ -263,10 +263,14 @@ priority 100000).
 - Второе ревью 2.1.1: «свой `stream()`» (async сначала, потом остальные) задерживал обычные ответы до конца
   цепочек редиректов → переход на «всё `AsyncResponse` от одного клиента, опции `withOptions()` у себя». Форма
   с ресурсом бросала «Uploaded stream ended for body part» → перемотка частей.
-- NTLM-рукопожатие через любой `AsyncResponse` (и `RetryableHttpClient` Symfony): `LogicException` «CurlResponse
-  is already consumed» — подтверждено пробой третьего ревью на curl (401 с токеном NTLM), в т.ч. без редиректа и
-  на хост вне списка: в режиме со списком каждый ответ — `AsyncResponse`. Обойти нельзя (`AsyncResponse::stream()`
-  принимает только `AsyncResponse`); в README/CHANGELOG как ограничение.
+- NTLM (исправлено в 2.1.2; диагноз 2.1.1 был ошибочным). Причина — не `AsyncResponse`, а `max_redirects: 0`:
+  Symfony ставит `CURLOPT_MAXREDIRS=0`, а libcurl (8.9.1) считает повтор запроса для NTLM переходом и не шлёт Type3
+  → 401; через `AsyncResponse` это `LogicException` «CurlResponse is already consumed» (`CurlResponse` при 401+NTLM
+  не отдаёт FirstChunk). `RetryableHttpClient` и голый curl с `max_redirects ≥ 1` работают. `FOLLOWLOCATION=false` +
+  `MAXREDIRS` -1/1 — работает (кандидат на фикс в Symfony `CurlHttpClient`; `extra.curl` эти опции не пускает).
+  Проба третьего ревью врала: встроенный `php -S` рвёт соединение после challenge, честного рукопожатия нет —
+  для NTLM нужен keep-alive сервер на `stream_socket_server` (Type1 → 401 с type-2, Type3 → 200 на том же
+  соединении). Обход 2.1.2: NTLM-запрос в режиме со списком — без baggage бандла, редиректы у транспорта.
 - Третье ревью 2.1.1: собственное слияние `query` из `withOptions()` применяло его и к абсолютным URL (утечка ключа на
   чужие хосты, Critical) — транспорт кладёт default query только в относительный URL (`resolveUrl(..., $queryDefaults)`,
   ключи URL важнее, цепочка `withOptions` забывает прежний query). Теперь `ClientOptions::prepare()` делает ровно так.

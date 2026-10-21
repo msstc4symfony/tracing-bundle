@@ -91,6 +91,9 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
     чередует их. Прежние варианты (ответ транспорта как есть / делёж в `stream()`) ломали `stream()` по клонам
     («many clients») или задерживали обычные ответы до конца редирект-цепочек. `max_redirects` — `is_numeric`.
     Аргументы из pass: `$maxRedirects`, `$ntlmDefault` — из `resolveValue()` аргумента 0 или `$defaultOptions`.
+    NTLM (2.1.2): `array_key_exists('auth_ntlm', $options) ? !== null : $ntlmDefault` (опции уже слиты с
+    `withOptions()`; явный `null` запроса выключает умолчание транспорта) → baggage бандла нет, follower не ставится,
+    `max_redirects` не трогается — редиректы ведёт транспорт.
   Общая логика заголовков — `TraceHeaders` (`of`, `with`, `without`, `blocking`).
 - Хост — `RequestUrl::resolve($url, $baseUri)` на `HttpClientTrait::parseUrl/resolveUrl` (тот же парсер, что у
   транспорта: `\\` и CR/LF отклоняются, IDN → punycode, `//host` против base_uri; userinfo режется по последнему `@`).
@@ -105,8 +108,7 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
   ему не виден); прочее (closure, iterable, pipe) → цепочка заканчивается 3xx; при origin ≠ первого —
   `Authorization`/`Cookie` блокируются пустым списком (`'Authorization' => []`: `mergeDefaultOptions` не добавит
   умолчание внутреннего клиента), `auth_basic`/`auth_bearer` = `null` (не unset — `$options += $defaults` вернёт),
-  `auth_ntlm` = null если передан, задан в `withOptions()` или в умолчаниях транспорта (Native/Amp отклоняют даже
-  null, поэтому не всегда); при возврате на первый origin креды снова идут (как у транспортов). Origin включает userinfo — как у Native
+  NTLM до follower не доходит (см. выше); при возврате на первый origin креды снова идут (как у транспортов). Origin включает userinfo — как у Native
   (`u:p@h` → `h` считается другим origin, креды снимаются). `Host` снимается.
   `redirect_count`, `redirect_time` — через `setInfo`.
 - Guzzle: наш middleware в стеке последним = самый внутренний (`HandlerStack::resolve` обходит `array_reverse`),
