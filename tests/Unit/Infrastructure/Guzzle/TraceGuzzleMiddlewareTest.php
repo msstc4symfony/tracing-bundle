@@ -255,6 +255,43 @@ final class TraceGuzzleMiddlewareTest extends TestCase
         self::assertSame(['msstc4symfony.caller=orders%3Aapi'], $this->lastRequest()->getHeader('baggage'));
     }
 
+    public function testDropsItsBaggageWhenARedirectLeavesTheAllowedHosts(): void
+    {
+        $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
+        $this->transport->reset();
+        $this->transport->append(new Response(302, ['Location' => 'https://evil.example/collect']), new Response());
+        $this->middleware(new BaggageRecipients(['orders']))->addHandler($this->client);
+
+        $this->client->request('GET', 'http://orders/x', ['headers' => ['baggage' => 'tenant=7']]);
+
+        $request = $this->lastRequest();
+        self::assertSame('evil.example', $request->getUri()->getHost());
+        self::assertSame(['tenant=7'], $request->getHeader('baggage'));
+        self::assertTrue($request->hasHeader('traceparent'));
+    }
+
+    public function testSendsItsBaggageOnceAcrossRedirectsBetweenAllowedHosts(): void
+    {
+        $this->transport->reset();
+        $this->transport->append(new Response(302, ['Location' => 'http://payments/y']), new Response());
+        $this->middleware(new BaggageRecipients(['orders', 'payments']))->addHandler($this->client);
+
+        $this->client->request('GET', 'http://orders/x');
+
+        self::assertSame(['msstc4symfony.caller=orders%3Aapi'], $this->lastRequest()->getHeader('baggage'));
+    }
+
+    public function testSendsNoBaggageOfItsOwnWhenARedirectLeavesAHostWithoutCallerBaggage(): void
+    {
+        $this->transport->reset();
+        $this->transport->append(new Response(302, ['Location' => 'http://evil.example/y']), new Response());
+        $this->middleware(new BaggageRecipients(['orders']))->addHandler($this->client);
+
+        $this->client->request('GET', 'http://orders/x');
+
+        self::assertFalse($this->lastRequest()->hasHeader('baggage'));
+    }
+
     private function middleware(BaggageRecipients $recipients = new BaggageRecipients()): TraceGuzzleMiddleware
     {
         return new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api'), $recipients);

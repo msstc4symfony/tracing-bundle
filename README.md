@@ -158,12 +158,33 @@ msstc4symfony_tracing:
   list as a whole cannot; such an entry is checked when the HTTP client is first built, and an invalid or
   unset value makes building it fail;
 * a host not on the list gets no `baggage` from the bundle, not even `msstc4symfony.caller`. A `baggage`
-  header the caller set (Sentry's, for one) is sent unchanged. `traceparent` and `tracestate` still go to
+  header the caller set (Sentry's, for one) is sent unchanged, redirects included: the list limits the members
+  the bundle adds, not the caller's own headers. `traceparent` and `tracestate` still go to
   every host, and Messenger messages always carry the baggage.
 
-The host is the one of the request URL (Symfony HttpClient: of the request's or `withOptions()`' `base_uri` for
-a relative URL; Guzzle: of the request URI). A relative URL resolved by a `base_uri` the transport itself was
-created with (a hand-made `http_client.transport`) has no host here and gets no baggage.
+The host is the one of the request URL, read as the client reads it (Symfony HttpClient: its own URL parser,
+international names in punycode, the request's or `withOptions()`' `base_uri` for a relative URL; Guzzle: the
+request URI). A relative URL resolved by a `base_uri` the transport itself was created with (a hand-made
+`http_client.transport`) has no host here and gets no baggage.
+
+Redirects are checked hop by hop:
+
+* Symfony HttpClient: with a list set, a request that carries the bundle's baggage follows its redirects in the
+  bundle rather than in the transport, which would send the same headers to the new host. Each hop gets the
+  baggage the list allows. The rules are the native transport's: any 3xx but 304 with a `Location` (the first
+  one); POST (anything on 303) turns into a GET without body on 301 to 303; `max_redirects` of the request,
+  `withOptions()` or `framework.http_client.default_options`; `Authorization`, `Cookie`, `auth_basic`,
+  `auth_bearer` and `auth_ntlm` (the client's defaults too) go to the first origin only, and again when a hop
+  comes back to it. Differences: the `query` option is not added to the `Location` again; a body that cannot
+  be sent again (a closure, an iterable, a pipe or a `StreamableInterface`, also inside a form or an object of one) ends the chain
+  with the redirect response, a seekable stream is sent again from where it stood; `getInfo()` also has `previous_info`, and `total_time` is the last hop's.
+  With a list set every response is an `AsyncResponse` (as with Symfony's `RetryableHttpClient`). A request that
+  carries the bundle's baggage to a listed host with redirects on reports an idle timeout as a
+  `TransportException`, not a `TimeoutException`. NTLM authentication (curl's `auth_ntlm`) does not work with a
+  list set: `AsyncResponse` cannot carry curl's NTLM handshake (`LogicException`, as with `RetryableHttpClient`).
+* Guzzle: `allow_redirects` sends every hop through the bundle's middleware, which the bundle puts innermost. A
+  stack built by hand must push `TraceGuzzleMiddleware::middleware()` after `allow_redirects` (`push()` puts it
+  inside), or redirected requests keep the first host's baggage.
 
 Upgrading from 1.x: `TraceStamp` moved to `Framework\Messenger\TraceStamp`, and a message stamped
 by one major cannot be decoded by the other. Drain the async transports (or stop producers until

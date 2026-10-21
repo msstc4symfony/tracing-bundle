@@ -1,4 +1,4 @@
-# Архитектура (2.1)
+# Архитектура (2.1.1)
 
 Спек: `../docs/superpowers/specs/2026-10-20-tracing-2-w3c-design.md` (B3). Только W3C Trace Context + W3C
 Baggage; `request-id`/`request-from` удалены в 2.0.
@@ -9,7 +9,7 @@ Baggage; `request-id`/`request-from` удалены в 2.0.
 |---|---|---|
 | Domain (`Domain/ValueObject/`) | `TraceParent`, `TraceState`, `Baggage`, `TraceContext`, `OutgoingTrace` | — |
 | Application | `Port\TraceContextHolderInterface`, `CallerName`, `BaggageRecipients` | Domain |
-| Infrastructure | `Context\InMemoryTraceContextHolder`, `HttpClient\TraceHttpClientDecorator`, `Guzzle\TraceGuzzleMiddleware`, `Guzzle\ChainedClientConfigurator` | Domain, Application |
+| Infrastructure | `Context\InMemoryTraceContextHolder`, `HttpClient\TraceHttpClientDecorator`, `HttpClient\AllowListTraceHttpClientDecorator`, `HttpClient\TraceHeaders`, `HttpClient\RequestUrl`, `HttpClient\RedirectFollower`, `HttpClient\ClientOptions`, `HttpClient\PreparedRequest`, `Guzzle\TraceGuzzleMiddleware`, `Guzzle\ChainedClientConfigurator` | Domain, Application |
 | Presentation | `EventListener\HttpTraceListener`, `EventListener\ConsoleTraceSubscriber` | Domain, Application |
 | Framework | `Messenger\{Incoming,Outgoing}TraceMiddleware`, `Messenger\TraceStamp`, `Messenger\WorkerTraceSubscriber`, `Monolog\TraceLogProcessor`, `Sentry\TracingIntegration` | Domain, Application |
 | DependencyInjection | `CompilerPass\HttpClientPass`, `CompilerPass\GuzzlePass`, `CompilerPass\BaggageRecipientsPass` | Application, Infrastructure |
@@ -78,15 +78,40 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
   должен выполняться раньше нашего (README).
 - Белый список (2.1, `baggage.allowed_hosts`): `BaggageRecipients::allows($host)` решает, трогать ли `baggage`
   вообще. Не в списке → ни нашего baggage, ни caller; заданный вызывающим уходит как есть; `traceparent`/
-  `tracestate` — всем. `null` = все хосты (поведение 2.0), `[]` = никому. Хост: HttpClient — `parse_url($url)`,
-  для относительного URL — из `$options['base_uri']` (транспорт получает относительный URL, когда `base_uri`
-  передан в опциях запроса **или в `withOptions()`** — `DecoratorTrait::withOptions` отдаёт его внутреннему
-  клиенту, поэтому декоратор переопределяет `withOptions()` и хранит `$baseUri`; scoped-клиенты резолвят сами);
-  Guzzle — `getUri()->getHost()`. `allowsEveryHost()` пропускает `parse_url` при `null`. Хост нормализуется:
-  нижний регистр, одна завершающая точка снимается (и у записи, и у хоста; `..` — невалидно), IPv6 —
-  `inet_ntop(inet_pton())` без скобок. Unicode-хосты не сопоставляются (записи — в punycode). Messenger не
-  затронут. В `TraceGuzzleMiddleware` (public) аргумент необязательный последний (`new BaggageRecipients()` = все);
-  в `@internal` декораторе — обязательный, чтобы ошибка wiring не открыла всем.
+  `tracestate` — всем. `null` = все хосты, `[]` = никому. Messenger не затронут.
+- **Два декоратора** (2.1.1), `HttpClientPass` выбирает по параметру `msstc4symfony_tracing.baggage.allowed_hosts`:
+  - `null` → `TraceHttpClientDecorator` (`DecoratorTrait`, как в 2.0: без URL, без редиректов);
+  - список → `AllowListTraceHttpClientDecorator` (`AsyncDecoratorTrait`): **каждый** ответ — `AsyncResponse`
+    (passthru `RedirectFollower` только при нашем baggage и `max_redirects > 0`, иначе null). `withOptions()` НЕ
+    клонирует внутренний клиент (только вызывает его для валидации): опции хранятся в `$defaults` и сливаются в
+    запрос `ClientOptions::prepare()` → `PreparedRequest{url, options}`: `mergeDefaultOptions(..., true)` без
+    `normalized_headers`; default `query` — только в относительный URL через `resolveUrl($url, $base, $defaultQuery)`
+    (как транспорт; ключи URL важнее), затем `query => []`. `ClientOptions::defaults()` для `withOptions()` — как
+    у транспорта, забывает прежний default query. Так все ответы от одного `$this->client` и `AsyncResponse::stream()`
+    чередует их. Прежние варианты (ответ транспорта как есть / делёж в `stream()`) ломали `stream()` по клонам
+    («many clients») или задерживали обычные ответы до конца редирект-цепочек. `max_redirects` — `is_numeric`.
+    Аргументы из pass: `$maxRedirects`, `$ntlmDefault` — из `resolveValue()` аргумента 0 или `$defaultOptions`.
+  Общая логика заголовков — `TraceHeaders` (`of`, `with`, `without`, `blocking`).
+- Хост — `RequestUrl::resolve($url, $baseUri)` на `HttpClientTrait::parseUrl/resolveUrl` (тот же парсер, что у
+  транспорта: `\\` и CR/LF отклоняются, IDN → punycode, `//host` против base_uri; userinfo режется по последнему `@`).
+  `base_uri`: из опций запроса, иначе из `withOptions()`. Приватные статики трейта без BC-гарантий —
+  `RequestUrlTest` страхует при обновлении http-client.
+- Редиректы — `RedirectFollower` (passthru-объект): любой 3xx кроме 304 с первым `Location` (резолвится против
+  `getInfo('url')` — фактического URL с query); 301–303 POST и всё
+  на 303 → GET (HEAD остаётся), без body/json, `Content-*`/`Transfer-Encoding` блокируются; `query` снимается
+  (Location полный — иначе ключи из query уходили на чужой хост, CR-001 ревью); тело на 307/308: исходное тело хранится в `$body`, позиции
+  его потоков — `ftell` в конструкторе; на каждом хопе `fseek` к ним: форма — все ресурсы-части seekable, иначе
+  конец цепочки; одиночный seekable ресурс → `fseek` и отправка новым замыканием `fread` (curl читает ресурс через `CURLOPT_READDATA` с места, где остановился сам, PHP-`rewind()`
+  ему не виден); прочее (closure, iterable, pipe) → цепочка заканчивается 3xx; при origin ≠ первого —
+  `Authorization`/`Cookie` блокируются пустым списком (`'Authorization' => []`: `mergeDefaultOptions` не добавит
+  умолчание внутреннего клиента), `auth_basic`/`auth_bearer` = `null` (не unset — `$options += $defaults` вернёт),
+  `auth_ntlm` = null если передан, задан в `withOptions()` или в умолчаниях транспорта (Native/Amp отклоняют даже
+  null, поэтому не всегда); при возврате на первый origin креды снова идут (как у транспортов). Origin включает userinfo — как у Native
+  (`u:p@h` → `h` считается другим origin, креды снимаются). `Host` снимается.
+  `redirect_count`, `redirect_time` — через `setInfo`.
+- Guzzle: наш middleware в стеке последним = самый внутренний (`HandlerStack::resolve` обходит `array_reverse`),
+  `RedirectMiddleware` снаружи и строит следующий запрос из полученного им (без наших заголовков) → каждый хоп
+  проходит через нас заново. Утечка возможна только в ручном стеке, где `middleware()` снаружи `allow_redirects`.
 
 ## Логи и Sentry
 

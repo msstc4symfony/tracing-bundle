@@ -4,6 +4,27 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.1.1] - 2026-10-21
+
+### Security
+
+- `baggage.allowed_hosts` no longer sends the bundle's baggage to a host off the list through a redirect: with a list
+  set, a Symfony HttpClient request that carries it follows its redirects in the bundle, hop by hop, with the native
+  transport's rules (any 3xx but 304, method change on 301–303, credentials — the client's defaults and NTLM
+  included — to the first origin only, `max_redirects` of the request, `withOptions()` or `default_options`).
+- The host is read with Symfony HttpClient's own URL parser (international names in punycode), not `parse_url()`.
+
+### Changed
+
+- With a list set, every Symfony HttpClient response is an `AsyncResponse` (`getInfo()` has `previous_info`;
+  curl NTLM authentication fails with a `LogicException`, as through `RetryableHttpClient`), and requests that carry
+  the bundle's baggage to a listed host report idle timeouts as `TransportException`, not `TimeoutException`.
+  Their redirects differ from the transport's: the `query` option is not merged into the `Location`
+  again; a seekable stream body is sent again from where it stood, and a body that cannot be sent again ends the
+  chain with the redirect response.
+- Without a list, the HttpClient decorator is the one of 2.0 again (no redirect handling, no URL parsing).
+- Guzzle: no change; the README now says where a hand-built stack must put the middleware.
+
 ## [2.1.0] - 2026-10-21
 
 ### Added
@@ -142,6 +163,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.1.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.1
 [2.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.0
 [2.0.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.0.0
 [2.0.0-rc.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.0.0-rc.1

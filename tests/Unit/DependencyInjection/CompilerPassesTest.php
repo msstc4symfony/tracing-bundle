@@ -10,14 +10,17 @@ use GuzzleHttp\HandlerStack;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\BaggageRecipientsPass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\HttpClientPass;
 use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\ChainedClientConfigurator;
 use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\TraceGuzzleMiddleware;
+use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\AllowListTraceHttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection\Fixture\CustomConstructorClient;
 use Msstc4Symfony\TracingBundle\Test\Unit\Infrastructure\Guzzle\Fixture\ClientWithoutConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
@@ -40,6 +43,7 @@ final class CompilerPassesTest extends TestCase
         $container = new ContainerBuilder();
         $container->setDefinition(HttpClientPass::TRANSPORT_ID, new Definition(HttpClientInterface::class));
         $container->setDefinition('http_client', new Definition(HttpClientInterface::class));
+        $container->setParameter(BaggageRecipientsPass::PARAMETER, null);
 
         (new HttpClientPass())->process($container);
 
@@ -51,7 +55,6 @@ final class CompilerPassesTest extends TestCase
                 '$inner' => new Reference('msstc4symfony_tracing.http_client.transport.inner'),
                 '$holder' => new Reference(TraceContextHolderInterface::class),
                 '$caller' => new Reference(CallerName::class),
-                '$recipients' => new Reference(BaggageRecipients::class),
             ],
             $decorator->getArguments(),
         );
@@ -59,6 +62,62 @@ final class CompilerPassesTest extends TestCase
             $container->getDefinitions(),
             static fn (Definition $definition): bool => $definition->getDecoratedService() !== null,
         ));
+    }
+
+    /**
+     * @param array<int|string, mixed> $transportArguments
+     */
+    #[TestWith([[], 20, false])]
+    #[TestWith([[['max_redirects' => 3]], 3, false])]
+    #[TestWith([[['timeout' => 3]], 20, false])]
+    #[TestWith([['%transport.options%'], 5, true])]
+    #[TestWith([[['max_redirects' => '%transport.max_redirects%', 'auth_ntlm' => 'u:p']], 5, true])]
+    #[TestWith([[['auth_ntlm' => null]], 20, false])]
+    #[TestWith([['$defaultOptions' => ['max_redirects' => 4, 'auth_ntlm' => 'u:p']], 4, true])]
+    public function testFollowsRedirectsItselfWhenHostsAreListed(array $transportArguments, int $maxRedirects, bool $ntlmDefault): void
+    {
+        if (!trait_exists(DecoratorTrait::class)) {
+            self::markTestSkipped('symfony/http-client is not installed');
+        }
+
+        $container = new ContainerBuilder();
+        $container->setParameter('transport.max_redirects', 5);
+        $container->setParameter('transport.options', ['max_redirects' => 5, 'auth_ntlm' => 'u:p']);
+        $container->setDefinition(HttpClientPass::TRANSPORT_ID, new Definition(HttpClientInterface::class, $transportArguments));
+        $container->setParameter(BaggageRecipientsPass::PARAMETER, ['orders']);
+
+        (new HttpClientPass())->process($container);
+
+        $decorator = $container->getDefinition(HttpClientPass::DECORATOR_ID);
+        self::assertSame(AllowListTraceHttpClientDecorator::class, $decorator->getClass());
+        self::assertSame([HttpClientPass::TRANSPORT_ID, null, -15], $decorator->getDecoratedService());
+        self::assertEquals(
+            [
+                '$inner' => new Reference('msstc4symfony_tracing.http_client.transport.inner'),
+                '$holder' => new Reference(TraceContextHolderInterface::class),
+                '$caller' => new Reference(CallerName::class),
+                '$recipients' => new Reference(BaggageRecipients::class),
+                '$maxRedirects' => $maxRedirects,
+                '$ntlmDefault' => $ntlmDefault,
+            ],
+            $decorator->getArguments(),
+        );
+    }
+
+    public function testLeavesAMaxRedirectsFromAnEnvVariableToRuntime(): void
+    {
+        if (!trait_exists(DecoratorTrait::class)) {
+            self::markTestSkipped('symfony/http-client is not installed');
+        }
+
+        $container = new ContainerBuilder();
+        $env = $container->getParameterBag()->resolveValue('%env(int:MAX_REDIRECTS)%');
+        $container->setDefinition(HttpClientPass::TRANSPORT_ID, new Definition(HttpClientInterface::class, [['max_redirects' => $env]]));
+        $container->setParameter(BaggageRecipientsPass::PARAMETER, ['orders']);
+
+        (new HttpClientPass())->process($container);
+
+        self::assertSame($env, $container->getDefinition(HttpClientPass::DECORATOR_ID)->getArgument('$maxRedirects'));
     }
 
     public function testNoTransportNoDecorator(): void

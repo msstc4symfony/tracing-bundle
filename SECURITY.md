@@ -42,7 +42,9 @@ reveals internal naming. If that matters, list the hosts that may receive baggag
 `msstc4symfony_tracing.baggage.allowed_hosts` (other hosts get no `baggage` from the bundle; messages
 are not affected), set the headers explicitly on such requests — the bundle never replaces a header
 the caller set — or strip `baggage` at the egress proxy. `traceparent` and `tracestate` go to every
-host whatever the list says.
+host whatever the list says. Use 2.1.1 or later: in 2.1.0 a redirect from a listed host carried the
+bundle's baggage to the next host. The list names hosts, not schemes: a listed host reached over plain
+`http` (a redirect from `https` included) gets the baggage in clear text.
 
 ### 3. Long-running workers
 

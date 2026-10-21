@@ -244,3 +244,60 @@ priority 100000).
 - Ревью 2.1 (Major): `base_uri` из `withOptions()` терялся — `DecoratorTrait` кладёт его во внутренний клиент, и
   `request('GET', '/x')` приходил без хоста → разрешённый хост молча без baggage. Тест
   `testTakesTheHostOfABaseUriSetWithOptions`.
+
+## 2.1.1: редиректы и парсер URL (2026-10-21 UTC)
+
+- В 2.1.0 разрешённый хост с редиректом наружу уводил baggage (транспорт Symfony повторяет заголовки). Найдено
+  фоновым security-review после релиза; исправлено собственным следованием редиректам (architecture.md).
+- Guzzle в 2.1.0 был безопасен (middleware внутри `allow_redirects`) — первоначальная оценка «Guzzle тоже течёт»
+  была ошибочной; тесты `testDropsItsBaggageWhenARedirectLeavesTheAllowedHosts` и др. закрепляют поведение.
+- `MockHttpClient` принимает лишние опции (`prepareRequest(..., true)`), поэтому `auth_ntlm => null` в тестах не
+  падает, а на `NativeHttpClient` — `Option "auth_ntlm" is not supported`. Тест проверяет наличие ключа.
+- `MockHttpClient` не следует редиректам → в kernel-тестах (`mock_response_factory`) редирект виден только благодаря
+  нашему декоратору; `RecordingResponseFactory::$redirects` задаёт ответы 302.
+- Ревью 2.1.1 (до релиза): `query` применялся повторно на каждом хопе и уводил ключи на чужой хост (Critical);
+  NTLM из `withOptions()` уходил на чужой origin; `max_redirects` из `%env()%` молча становился 20 (теперь
+  `resolveValue` + плейсхолдер); обёртка всех ответов в `AsyncResponse` ломала `stream()` по клонам
+  `withOptions()`; потоковое тело на 307/308 уходило пустым (curl — даже после PHP-`rewind()`, поэтому замыкание).
+  Все с тестами.
+- Второе ревью 2.1.1: «свой `stream()`» (async сначала, потом остальные) задерживал обычные ответы до конца
+  цепочек редиректов → переход на «всё `AsyncResponse` от одного клиента, опции `withOptions()` у себя». Форма
+  с ресурсом бросала «Uploaded stream ended for body part» → перемотка частей.
+- NTLM-рукопожатие через любой `AsyncResponse` (и `RetryableHttpClient` Symfony): `LogicException` «CurlResponse
+  is already consumed» — подтверждено пробой третьего ревью на curl (401 с токеном NTLM), в т.ч. без редиректа и
+  на хост вне списка: в режиме со списком каждый ответ — `AsyncResponse`. Обойти нельзя (`AsyncResponse::stream()`
+  принимает только `AsyncResponse`); в README/CHANGELOG как ограничение.
+- Третье ревью 2.1.1: собственное слияние `query` из `withOptions()` применяло его и к абсолютным URL (утечка ключа на
+  чужие хосты, Critical) — транспорт кладёт default query только в относительный URL (`resolveUrl(..., $queryDefaults)`,
+  ключи URL важнее, цепочка `withOptions` забывает прежний query). Теперь `ClientOptions::prepare()` делает ровно так.
+  Тело-ресурс повторялся один раз (второй 307 → замыкание не перематывается) и с нуля, а не с исходной позиции —
+  `RedirectFollower` хранит исходное тело и `ftell`-позиции его потоков.
+- Урок: всё, что декоратор делает вместо Symfony (слияние опций, редиректы), сверять с исходником транспорта
+  построчно — каждое «упрощение» было утечкой или регрессией.
+- `MockHttpClient` отдаёт ответы фабрики в момент `request()`, а следующий хоп редиректа запрашивается позже —
+  порядок очереди `$responses` в тестах это учитывает.
+- Тест-рекордер `MockHttpClient`: тело-ресурс приходит в callback как есть (читать `stream_get_contents` с текущей
+  позиции), тело-замыкание — читать до `''`.
+- Эквивалентные мутанты 2.1.1: тайминг `startTime` и ранние `return` в `RedirectFollower::next()` (цепочка всё
+  равно кончается), `instanceof`-сужение в `AllowListTraceHttpClientDecorator::streamAll()`,
+  `$context->passthru()` и `->cancel()` в `RedirectFollower`, `max(1, $size)`/`(string)` в замыкании повторного
+  тела, порядок `$arguments[0] ?? $arguments['$defaultOptions']` в `HttpClientPass`, запасные `0` для `ftell()`/позиции
+  в `RedirectFollower`, ранние `return` в `ClientOptions::prepare()` (без default query; строковый query —
+  `TypeError` всё равно будет), `&&`→`||` в условии «относительный без нашего base» (`base_uri` остаётся в опциях,
+  и внутренний клиент разрешает URL так же)
+  (только экономия ресурсов), `return null` в catch и `is_string`-guard в `RequestUrl::resolve()` (без них результат
+  тот же `null`; guard нужен PHPStan).
+- Четвёртое ревью 2.1.1 (утечек нет): default query терялся, когда `base_uri` только у внутреннего клиента
+  (`MockHttpClient` с `https://example.com`) — относительный URL теперь остаётся относительным с влитым default query
+  (`mergeQueryString(..., false)`); строковый `query` отдаётся внутреннему клиенту (он бросает `TypeError`, как
+  транспорт); `base_uri` массивом частей принимается (`ClientOptions::base()`); объекты в форме (Stringable,
+  публичные свойства) повторяются, `StreamableInterface` — нет.
+- Сознательное расхождение: собственный default `query` внутреннего клиента (из его конструктора) остаётся после
+  нашего `withOptions()` без query; у транспорта `withOptions()` его забывает. Утечки нет (применяется только к его
+  `base_uri`), через FrameworkBundle недостижимо (`default_options` без `query`/`base_uri`).
+- Сознательное расхождение: относительный URL без path и query (`''`, `'#f'`) с default query при `base_uri` только у
+  внутреннего клиента — транспорт берёт query из base_uri и дописывает default (`dir?bq=1&k=v`), декоратор отдаёт
+  `?k=v`, и query base_uri теряется. Base внутреннего клиента декоратору не виден; безопасности не касается.
+- Финальное ревью 2.1.1: объекты в форме обходятся как в `normalizeBody` (`RedirectFollower::leaves()`: публичные
+  свойства рекурсивно, объект без свойств — лист) — иначе поток в свойстве объекта не перематывался («Uploaded stream
+  ended for body part "o[f]"»). Строковый default query отдаётся внутреннему клиенту (`TypeError`, как транспорт).

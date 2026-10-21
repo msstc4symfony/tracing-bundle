@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Test\Unit\Infrastructure\HttpClient;
 
 use ArrayIterator;
-use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
@@ -14,6 +13,7 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
 use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
+use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHeaders;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHttpClientDecorator;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -28,7 +28,7 @@ use Symfony\Component\HttpClient\ScopingHttpClient;
 #[CoversClass(TraceHttpClientDecorator::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
 #[UsesClass(CallerName::class)]
-#[UsesClass(BaggageRecipients::class)]
+#[UsesClass(TraceHeaders::class)]
 #[UsesClass(TraceContext::class)]
 #[UsesClass(RuntimeId::class)]
 #[UsesClass(OutgoingTrace::class)]
@@ -226,94 +226,17 @@ final class TraceHttpClientDecoratorTest extends TestCase
         self::assertSame(['sentry-trace_id=abc,tenant=7, msstc4symfony.caller=orders%3Aapi,user=alice'], $this->sentHeaders[0]['baggage'] ?? null);
     }
 
-    public function testSendsNoBaggageToAHostNotAllowed(): void
-    {
-        $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
-
-        $this->send([], new BaggageRecipients(['orders']));
-
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[0]);
-        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sentHeaders[0]['traceparent'] ?? null);
-    }
-
-    public function testSendsTheTraceStateToAHostNotAllowed(): void
-    {
-        $this->continueReceivedTrace();
-
-        $this->send([], new BaggageRecipients([]));
-
-        self::assertSame(['rojo=1'], $this->sentHeaders[0]['tracestate'] ?? null);
-    }
-
-    public function testSendsTheCallersBaggageUnchangedToAHostNotAllowed(): void
-    {
-        $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
-
-        $this->send(['headers' => ['baggage' => ['sentry-trace_id=abc', 'tenant=7']]], new BaggageRecipients([]));
-
-        self::assertSame(['sentry-trace_id=abc', 'tenant=7'], $this->sentHeaders[0]['baggage'] ?? null);
-    }
-
-    public function testSendsTheBaggageToAnAllowedHostOnAnyPort(): void
-    {
-        $this->decorator(new BaggageRecipients(['*.example.com']))->request('GET', 'https://API.example.com:8443/orders?x=1')->getStatusCode();
-
-        self::assertSame(['msstc4symfony.caller=orders%3Aapi'], $this->sentHeaders[0]['baggage'] ?? null);
-    }
-
-    public function testTakesTheHostOfTheBaseUriForARelativeUrl(): void
-    {
-        $recipients = new BaggageRecipients(['orders']);
-
-        $this->decorator($recipients)->request('GET', '/x', ['base_uri' => 'http://orders:8080/api/'])->getStatusCode();
-        $this->decorator($recipients)->request('GET', '/x', ['base_uri' => 'http://payments/'])->getStatusCode();
-
-        self::assertArrayHasKey('baggage', $this->sentHeaders[0]);
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[1]);
-    }
-
-    public function testTakesTheHostOfABaseUriSetWithOptions(): void
-    {
-        $decorator = $this->decorator(new BaggageRecipients(['orders']));
-
-        $decorator->withOptions(['base_uri' => 'http://orders/'])->request('GET', '/x')->getStatusCode();
-        $decorator->withOptions(['base_uri' => 'http://orders/'])->withOptions(['timeout' => 1])->request('GET', '/x')->getStatusCode();
-        $decorator->withOptions(['base_uri' => 'http://payments/'])->request('GET', '/x')->getStatusCode();
-        $decorator->withOptions(['base_uri' => 'http://payments/'])->request('GET', '/x', ['base_uri' => 'http://orders/'])->getStatusCode();
-        $decorator->request('GET', '/x')->getStatusCode();
-
-        self::assertArrayHasKey('baggage', $this->sentHeaders[0]);
-        self::assertArrayHasKey('baggage', $this->sentHeaders[1]);
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[2]);
-        self::assertArrayHasKey('baggage', $this->sentHeaders[3]);
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[4], 'withOptions() returns a copy.');
-    }
-
-    public function testTakesTheHostOfAnAbsoluteUrlOverTheBaseUri(): void
-    {
-        $this->decorator(new BaggageRecipients(['orders']))->request('GET', 'http://payments/x', ['base_uri' => 'http://orders/'])->getStatusCode();
-
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[0]);
-    }
-
-    public function testSendsNoBaggageToAUrlWithoutAHostWhenHostsAreListed(): void
-    {
-        $this->decorator(new BaggageRecipients(['example.com']))->request('GET', 'not a url')->getStatusCode();
-
-        self::assertArrayNotHasKey('baggage', $this->sentHeaders[0]);
-    }
-
     /**
      * @param array<mixed> $options
      */
-    private function send(array $options, BaggageRecipients $recipients = new BaggageRecipients()): void
+    private function send(array $options): void
     {
-        $this->decorator($recipients)->request('GET', 'https://example.com', $options)->getStatusCode();
+        $this->decorator()->request('GET', 'https://example.com', $options)->getStatusCode();
     }
 
-    private function decorator(BaggageRecipients $recipients = new BaggageRecipients()): TraceHttpClientDecorator
+    private function decorator(): TraceHttpClientDecorator
     {
-        return new TraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'), $recipients);
+        return new TraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'));
     }
 
     private function continueReceivedTrace(): void

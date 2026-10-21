@@ -255,6 +255,23 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertSame(self::TRACE_ID, TraceParent::fromHeader($sent['traceparent'] ?? '')?->traceId);
     }
 
+    public function testARedirectToAHostNotListedGetsNoBaggage(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_BAGGAGE_TO_EXAMPLE]);
+        $factory = self::getContainer()->get(RecordingResponseFactory::class);
+        self::assertInstanceOf(RecordingResponseFactory::class, $factory);
+        $factory->redirects['https://example.com/downstream'] = 'https://collector.test/x';
+
+        $response = $kernel->handle(Request::create('/call', server: ['HTTP_BAGGAGE' => 'user=alice']));
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertContains('baggage: msstc4symfony.caller=unknown%3Aunknown,user=alice', $factory->headersByUrl['https://example.com/downstream'] ?? []);
+        $redirected = $factory->headersByUrl['https://collector.test/x'] ?? self::fail('The redirect was not followed.');
+        self::assertSame([], array_filter($redirected, static fn (string $line): bool => stripos($line, 'baggage:') === 0));
+        self::assertNotSame([], array_filter($redirected, static fn (string $line): bool => stripos($line, 'traceparent:') === 0));
+    }
+
     #[TestWith([TestKernel::ENV_BAGGAGE_TO_ORDERS, 'http://example.test/', false])]
     #[TestWith([TestKernel::ENV_BAGGAGE_TO_EXAMPLE, 'http://example.com/', true])]
     public function testGuzzleSendsTheBaggageToListedHostsOnly(string $environment, string $url, bool $sent): void
