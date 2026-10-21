@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Test\Integration;
 
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
 use Monolog\Handler\TestHandler;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
@@ -12,12 +14,14 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\TraceStamp;
 use Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration;
+use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingGuzzleTransport;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\RecordingResponseFactory;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TestKernel;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TracedMessage;
 use Msstc4Symfony\TracingBundle\Test\Integration\Kernel\TracedMessageHandler;
 use Override;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use Psr\Log\LoggerInterface;
 use Sentry\ClientBuilder;
 use Sentry\Event;
@@ -227,6 +231,57 @@ final class W3cTraceContextTest extends KernelTestCase
         $this->expectException(InvalidConfigurationException::class);
 
         self::bootKernel(['environment' => $environment]);
+    }
+
+    public function testSendsTheBaggageToAListedHost(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_BAGGAGE_TO_EXAMPLE]);
+
+        $kernel->handle(Request::create('/call', server: ['HTTP_BAGGAGE' => 'user=alice']));
+
+        self::assertSame('msstc4symfony.caller=unknown%3Aunknown,user=alice', $this->sentHeaders()['baggage'] ?? null);
+    }
+
+    public function testSendsNoBaggageToAHostNotListed(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_BAGGAGE_TO_ORDERS]);
+
+        $kernel->handle(Request::create('/call', server: ['HTTP_TRACEPARENT' => self::TRACE_PARENT, 'HTTP_BAGGAGE' => 'user=alice']));
+
+        $sent = $this->sentHeaders();
+        self::assertArrayNotHasKey('baggage', $sent);
+        self::assertSame(self::TRACE_ID, TraceParent::fromHeader($sent['traceparent'] ?? '')?->traceId);
+    }
+
+    #[TestWith([TestKernel::ENV_BAGGAGE_TO_ORDERS, 'http://example.test/', false])]
+    #[TestWith([TestKernel::ENV_BAGGAGE_TO_EXAMPLE, 'http://example.com/', true])]
+    public function testGuzzleSendsTheBaggageToListedHostsOnly(string $environment, string $url, bool $sent): void
+    {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+        self::bootKernel(['environment' => $environment]);
+        $client = self::getContainer()->get(TestKernel::GUZZLE_CLIENT);
+        self::assertInstanceOf(Client::class, $client);
+        $stack = $client->getConfig('handler');
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        $transport = new RecordingGuzzleTransport();
+        $stack->setHandler($transport);
+
+        $client->request('GET', $url);
+
+        $request = $transport->lastRequest;
+        self::assertNotNull($request);
+        self::assertSame($sent, $request->hasHeader('baggage'));
+        self::assertTrue($request->hasHeader('traceparent'));
+    }
+
+    public function testAnInvalidAllowedHostIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('msstc4symfony_tracing.baggage.allowed_hosts');
+
+        self::bootKernel(['environment' => TestKernel::ENV_BAGGAGE_TO_INVALID]);
     }
 
     public function testCallerFallsBackToUnknownNames(): void

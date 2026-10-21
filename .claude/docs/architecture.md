@@ -1,4 +1,4 @@
-# Архитектура (2.0)
+# Архитектура (2.1)
 
 Спек: `../docs/superpowers/specs/2026-10-20-tracing-2-w3c-design.md` (B3). Только W3C Trace Context + W3C
 Baggage; `request-id`/`request-from` удалены в 2.0.
@@ -8,11 +8,11 @@ Baggage; `request-id`/`request-from` удалены в 2.0.
 | Слой | Классы | Зависит от |
 |---|---|---|
 | Domain (`Domain/ValueObject/`) | `TraceParent`, `TraceState`, `Baggage`, `TraceContext`, `OutgoingTrace` | — |
-| Application | `Port\TraceContextHolderInterface`, `CallerName` | Domain |
+| Application | `Port\TraceContextHolderInterface`, `CallerName`, `BaggageRecipients` | Domain |
 | Infrastructure | `Context\InMemoryTraceContextHolder`, `HttpClient\TraceHttpClientDecorator`, `Guzzle\TraceGuzzleMiddleware`, `Guzzle\ChainedClientConfigurator` | Domain, Application |
 | Presentation | `EventListener\HttpTraceListener`, `EventListener\ConsoleTraceSubscriber` | Domain, Application |
 | Framework | `Messenger\{Incoming,Outgoing}TraceMiddleware`, `Messenger\TraceStamp`, `Messenger\WorkerTraceSubscriber`, `Monolog\TraceLogProcessor`, `Sentry\TracingIntegration` | Domain, Application |
-| DependencyInjection | `CompilerPass\HttpClientPass`, `CompilerPass\GuzzlePass` | Application, Infrastructure |
+| DependencyInjection | `CompilerPass\HttpClientPass`, `CompilerPass\GuzzlePass`, `CompilerPass\BaggageRecipientsPass` | Application, Infrastructure |
 | BundleRoot | `TracingBundle` | DependencyInjection |
 
 Классы Domain лежат в `Domain/ValueObject/`, а не в корне `Domain/`: `SourceLayoutRule` и коллектор deptrac
@@ -20,7 +20,7 @@ Baggage; `request-id`/`request-from` удалены в 2.0.
 `WorkerTraceSubscriber` — во Framework, а не в Presentation: он вызывает `IncomingTraceMiddleware::closeUnit()`,
 а Presentation → Framework запрещено.
 
-Public API (без `@internal`): Domain целиком, порт, `CallerName`, Messenger-middleware и `TraceStamp`,
+Public API (без `@internal`): Domain целиком, порт, `CallerName`, `BaggageRecipients`, Messenger-middleware и `TraceStamp`,
 `TracingIntegration`, `TraceGuzzleMiddleware`, `TracingBundle`. Список — README «Public API».
 
 ## Модель
@@ -76,6 +76,17 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
   (с `ChainedClientConfigurator`, если у клиента свой), иначе запись в compiler log. PSR-7: при заданном
   baggage недостающие члены → `withAddedHeader()`. `GuzzleTracingMiddleware` Sentry *заменяет* `baggage` — он
   должен выполняться раньше нашего (README).
+- Белый список (2.1, `baggage.allowed_hosts`): `BaggageRecipients::allows($host)` решает, трогать ли `baggage`
+  вообще. Не в списке → ни нашего baggage, ни caller; заданный вызывающим уходит как есть; `traceparent`/
+  `tracestate` — всем. `null` = все хосты (поведение 2.0), `[]` = никому. Хост: HttpClient — `parse_url($url)`,
+  для относительного URL — из `$options['base_uri']` (транспорт получает относительный URL, когда `base_uri`
+  передан в опциях запроса **или в `withOptions()`** — `DecoratorTrait::withOptions` отдаёт его внутреннему
+  клиенту, поэтому декоратор переопределяет `withOptions()` и хранит `$baseUri`; scoped-клиенты резолвят сами);
+  Guzzle — `getUri()->getHost()`. `allowsEveryHost()` пропускает `parse_url` при `null`. Хост нормализуется:
+  нижний регистр, одна завершающая точка снимается (и у записи, и у хоста; `..` — невалидно), IPv6 —
+  `inet_ntop(inet_pton())` без скобок. Unicode-хосты не сопоставляются (записи — в punycode). Messenger не
+  затронут. В `TraceGuzzleMiddleware` (public) аргумент необязательный последний (`new BaggageRecipients()` = все);
+  в `@internal` декораторе — обязательный, чтобы ошибка wiring не открыла всем.
 
 ## Логи и Sentry
 
@@ -89,6 +100,19 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
 Корень `msstc4symfony_tracing`: `application_name`, `component_name`
 (`%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME|COMPONENT_NAME)%`, параметр `…unknown = 'unknown'`
 в `services.php`). Ключ `w3c_trace_context` не существует (`InvalidConfigurationException`).
+`baggage.allowed_hosts`: `arrayNode` + `defaultNull()` + `stringPrototype()` (null отличим от `[]`; Symfony 7.4+),
+параметр `msstc4symfony_tracing.baggage.allowed_hosts` → `BaggageRecipients::$allowedHosts`. Валидация —
+`BaggageRecipientsPass` строит `BaggageRecipients` при компиляции и превращает `InvalidArgumentException` в
+`InvalidConfigurationException` (BundleRoot по deptrac не видит Application, поэтому не в `configure()`).
+Элемент `null` (незаданный `%env(default::X)%`) → `InvalidArgumentException` при создании сервиса, т.е. при первой
+сборке HTTP-клиента — ломает весь клиент, не только baggage. Весь список одним `%env()%` Symfony не принимает
+(«A dynamic value is not compatible»). Элементы с `%env()%` pass пропускает явно (`resolveEnvPlaceholders($v, null, $usedEnvs)`; формат `true` подставил
+бы реальные значения и упал на отсутствующей переменной) — их проверяет `BaggageRecipients` при создании сервиса.
+Не-строка (параметр-число) → `InvalidConfigurationException`. `performNoDeepMerging()` — список из позднего файла
+заменяет ранний; `fixXmlConfig('allowed_host')`. Явный `~` не поддержан (prototyped array не принимает null).
+Запись: имя (`[a-z0-9_-]` метки через точку — `_` ради имён сервисов docker), IPv4, `[IPv6]` (через
+`filter_var`), `*.домен` (не совпадает с самим доменом; запрещено над IPv6 и над числовой последней меткой —
+`*.0.1` совпадал бы с IPv4); без порта, регистр не важен.
 
 ## Не-final классы
 

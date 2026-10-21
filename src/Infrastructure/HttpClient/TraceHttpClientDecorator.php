@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Infrastructure\HttpClient;
 
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
@@ -19,19 +20,26 @@ use Symfony\Contracts\Service\ResetInterface;
 use Traversable;
 
 /**
- * Adds the trace headers to every outgoing request unless the caller set them.
+ * Adds the trace headers to every outgoing request unless the caller set them; baggage only for the hosts
+ * BaggageRecipients allows.
  *
  * @internal
  */
 #[Exclude]
 final class TraceHttpClientDecorator implements HttpClientInterface, ResetInterface
 {
-    use DecoratorTrait;
+    use DecoratorTrait {
+        withOptions as private withInnerOptions;
+    }
+
+    /** The base_uri given to withOptions(): the inner client keeps it, request() never sees it. */
+    private ?string $baseUri = null;
 
     public function __construct(
         HttpClientInterface $inner,
         private readonly TraceContextHolderInterface $holder,
         private readonly CallerName $caller,
+        private readonly BaggageRecipients $recipients,
     ) {
         $this->client = $inner;
     }
@@ -63,9 +71,43 @@ final class TraceHttpClientDecorator implements HttpClientInterface, ResetInterf
             }
         }
 
-        $options['headers'] = $this->withBaggage($headers, $trace->baggage);
+        if ($this->recipients->allowsEveryHost() || $this->recipients->allows($this->hostOf($url, $options))) {
+            $headers = $this->withBaggage($headers, $trace->baggage);
+        }
+
+        $options['headers'] = $headers;
 
         return $this->client->request($method, $url, $options);
+    }
+
+    /**
+     * @param array<mixed> $options
+     */
+    #[Override]
+    public function withOptions(array $options): static
+    {
+        $clone = $this->withInnerOptions($options);
+        if (is_string($options['base_uri'] ?? null)) {
+            $clone->baseUri = $options['base_uri'];
+        }
+
+        return $clone;
+    }
+
+    /**
+     * A relative URL reaches the transport with the base_uri the transport resolves it against.
+     *
+     * @param array<mixed> $options
+     */
+    private function hostOf(string $url, array $options): string
+    {
+        $baseUri = is_string($options['base_uri'] ?? null) ? $options['base_uri'] : $this->baseUri;
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!is_string($host) && $baseUri !== null) {
+            $host = parse_url($baseUri, PHP_URL_HOST);
+        }
+
+        return is_string($host) ? $host : '';
     }
 
     /**

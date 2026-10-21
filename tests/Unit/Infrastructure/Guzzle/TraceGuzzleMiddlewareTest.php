@@ -10,6 +10,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use LogicException;
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
@@ -33,6 +34,7 @@ use ReflectionProperty;
 #[CoversClass(TraceGuzzleMiddleware::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
 #[UsesClass(CallerName::class)]
+#[UsesClass(BaggageRecipients::class)]
 #[UsesClass(TraceContext::class)]
 #[UsesClass(RuntimeId::class)]
 #[UsesClass(OutgoingTrace::class)]
@@ -221,9 +223,41 @@ final class TraceGuzzleMiddlewareTest extends TestCase
         self::assertTrue($request->hasHeader('traceparent'));
     }
 
-    private function middleware(): TraceGuzzleMiddleware
+    public function testSendsNoBaggageToAHostNotAllowed(): void
     {
-        return new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api'));
+        $this->continueReceivedTrace();
+        $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
+        $this->middleware(new BaggageRecipients(['orders']))->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com');
+
+        $request = $this->lastRequest();
+        self::assertFalse($request->hasHeader('baggage'));
+        self::assertTrue($request->hasHeader('traceparent'));
+        self::assertSame(['rojo=1'], $request->getHeader('tracestate'));
+    }
+
+    public function testSendsTheCallersBaggageUnchangedToAHostNotAllowed(): void
+    {
+        $this->middleware(new BaggageRecipients([]))->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com', ['headers' => ['baggage' => 'sentry-trace_id=abc']]);
+
+        self::assertSame(['sentry-trace_id=abc'], $this->lastRequest()->getHeader('baggage'));
+    }
+
+    public function testSendsTheBaggageToAnAllowedHostOnAnyPort(): void
+    {
+        $this->middleware(new BaggageRecipients(['*.example.com']))->addHandler($this->client);
+
+        $this->client->request('GET', 'https://API.example.com:8443/orders');
+
+        self::assertSame(['msstc4symfony.caller=orders%3Aapi'], $this->lastRequest()->getHeader('baggage'));
+    }
+
+    private function middleware(BaggageRecipients $recipients = new BaggageRecipients()): TraceGuzzleMiddleware
+    {
+        return new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api'), $recipients);
     }
 
     private function lastRequest(): RequestInterface

@@ -9,6 +9,7 @@ use GuzzleHttp\ClientInterface;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Promise\PromiseInterface;
 use LogicException;
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
@@ -17,7 +18,8 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
 use Psr\Http\Message\RequestInterface;
 
 /**
- * Adds the trace headers to Guzzle requests through a handler-stack middleware.
+ * Adds the trace headers to Guzzle requests through a handler-stack middleware; baggage only for the hosts
+ * BaggageRecipients allows.
  *
  * `GuzzlePass` wires it into container clients: through the client's `handler` config
  * (`decorateHandler()`), or, for clients it cannot build itself, as a service configurator
@@ -35,6 +37,7 @@ final readonly class TraceGuzzleMiddleware
     public function __construct(
         private TraceContextHolderInterface $holder,
         private CallerName $caller,
+        private BaggageRecipients $recipients = new BaggageRecipients(),
     ) {
     }
 
@@ -111,6 +114,10 @@ final readonly class TraceGuzzleMiddleware
             if ($trace->traceState instanceof TraceState && !$request->hasHeader(TraceState::HEADER)) {
                 $request = $request->withHeader(TraceState::HEADER, $trace->traceState->value);
             }
+        }
+
+        if (!$this->recipients->allows($request->getUri()->getHost())) {
+            return $request;
         }
 
         $given = $request->getHeader(Baggage::HEADER);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass;
 
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHttpClientDecorator;
@@ -46,6 +47,7 @@ final class HttpClientPass implements CompilerPassInterface
             ->setArgument('$inner', new Reference(self::DECORATOR_ID . '.inner'))
             ->setArgument('$holder', new Reference(TraceContextHolderInterface::class))
             ->setArgument('$caller', new Reference(CallerName::class))
+            ->setArgument('$recipients', new Reference(BaggageRecipients::class))
             ->setDecoratedService(self::TRANSPORT_ID, null, self::DECORATION_PRIORITY)
         ;
     }

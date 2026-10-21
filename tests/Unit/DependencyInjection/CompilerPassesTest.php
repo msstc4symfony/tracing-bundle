@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\DependencyInjection;
 use GuzzleHttp\Client;
 use GuzzleHttp\ClientInterface;
 use GuzzleHttp\HandlerStack;
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
@@ -50,6 +51,7 @@ final class CompilerPassesTest extends TestCase
                 '$inner' => new Reference('msstc4symfony_tracing.http_client.transport.inner'),
                 '$holder' => new Reference(TraceContextHolderInterface::class),
                 '$caller' => new Reference(CallerName::class),
+                '$recipients' => new Reference(BaggageRecipients::class),
             ],
             $decorator->getArguments(),
         );

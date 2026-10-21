@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use GuzzleHttp\ClientInterface;
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\IncomingTraceMiddleware;
@@ -32,6 +33,9 @@ return static function (ContainerConfigurator $container): void {
         ->tag('kernel.reset', ['method' => 'reset'])
     ;
     $services->alias(TraceContextHolderInterface::class, InMemoryTraceContextHolder::class)->public();
+    $services->set(BaggageRecipients::class)
+        ->arg('$allowedHosts', param('msstc4symfony_tracing.baggage.allowed_hosts'))
+    ;
     $services->set(CallerName::class)
         ->arg('$applicationName', param('msstc4symfony_tracing.application_name'))
         ->arg('$componentName', param('msstc4symfony_tracing.component_name'))

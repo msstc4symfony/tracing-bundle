@@ -230,3 +230,17 @@ priority 100000).
 - Тест-страж классов из `doc/*.yaml` проверяет **файл** по PSR-4, а не `class_exists()`: автозагрузка
   Messenger-middleware без `symfony/messenger` падает фатально в ячейке CI «without optional libraries»
   (красный CI на v2.0.0-rc.1, исправлено b7c5874).
+
+## 2.1 белый список baggage (2026-10-21 UTC)
+
+- Транспорт HttpClient **может** получить относительный URL: `request('GET', '/x', ['base_uri' => …])` на
+  `http_client` передаёт `base_uri` в опциях, резолвит его сам транспорт. Хост берётся из `base_uri` (тест
+  `testTakesTheHostOfTheBaseUriForARelativeUrl`). Без хоста и при заданном списке baggage не уходит.
+- Infection: `make infection` в sandbox падает («JUnit file could not be found» — `/tmp` read-only); запуск вне
+  sandbox с `env -u TMPDIR`. Новый `UsesClass` нужен во всех тестах, которые конструируют middleware
+  (`ChainedClientConfiguratorTest` стал risky под failOnRisky Infection).
+- Эквивалентный мутант: `TrueValue` в `BaggageRecipients` (множество через `isset`).
+- Typed class constants (`const string`) — PHP 8.3; пакет `>=8.2`, не использовать.
+- Ревью 2.1 (Major): `base_uri` из `withOptions()` терялся — `DecoratorTrait` кладёт его во внутренний клиент, и
+  `request('GET', '/x')` приходил без хоста → разрешённый хост молча без baggage. Тест
+  `testTakesTheHostOfABaseUriSetWithOptions`.

@@ -16,7 +16,7 @@ service it touches, OpenTelemetry-instrumented ones included:
 
 | Channel | In | Out |
 |---|---|---|
-| HTTP | `traceparent`, `tracestate`, `baggage` request headers | `traceresponse` on the response; `traceparent`, `tracestate`, `baggage` on every Symfony HttpClient / Guzzle request |
+| HTTP | `traceparent`, `tracestate`, `baggage` request headers | `traceresponse` on the response; `traceparent`, `tracestate`, `baggage` on every Symfony HttpClient / Guzzle request (`baggage` only to `allowed_hosts` when set) |
 | Messenger | `TraceStamp` on consumed messages | `TraceStamp` on dispatched messages |
 | Logs | — | `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller` in every Monolog record's `extra` |
 | Sentry (opt-in) | — | `runtime_id`, `caller` in every event's `extra`; `trace_id`, `span_id` tags |
@@ -141,7 +141,29 @@ Baggage and trace headers, including baggage received from outside, go to every 
 call, third-party APIs included (see the specs' privacy sections:
 [Trace Context](https://www.w3.org/TR/trace-context/#privacy-considerations),
 [Baggage](https://www.w3.org/TR/baggage/#privacy-considerations)). Set the headers yourself on a
-request to override them.
+request to override them, or list the hosts that may receive baggage:
+
+```yaml
+msstc4symfony_tracing:
+  baggage:
+    allowed_hosts: ['orders', 'payments.internal', '*.svc.cluster.local', '10.0.0.7', '[fd00::7]']
+```
+
+* not set (the default): every host gets baggage. The key cannot be set to `~`; leave it out instead;
+* a list: only the hosts it names. An entry is a host name (case-insensitive, any port, a trailing dot
+  ignored), an IP address (IPv6 in brackets, any spelling) or `*.example.com`, which matches every subdomain
+  of `example.com` but not `example.com` itself. `[]` sends baggage to no host. A list in a later file
+  (`when@prod`) replaces the earlier one. An invalid entry (a port, a URL, a `*` elsewhere, `*.` over
+  numbers, non-ASCII: write IDNs in punycode) fails the container build. Entries may use `%env()%`, the
+  list as a whole cannot; such an entry is checked when the HTTP client is first built, and an invalid or
+  unset value makes building it fail;
+* a host not on the list gets no `baggage` from the bundle, not even `msstc4symfony.caller`. A `baggage`
+  header the caller set (Sentry's, for one) is sent unchanged. `traceparent` and `tracestate` still go to
+  every host, and Messenger messages always carry the baggage.
+
+The host is the one of the request URL (Symfony HttpClient: of the request's or `withOptions()`' `base_uri` for
+a relative URL; Guzzle: of the request URI). A relative URL resolved by a `base_uri` the transport itself was
+created with (a hand-made `http_client.transport`) has no host here and gets no baggage.
 
 Upgrading from 1.x: `TraceStamp` moved to `Framework\Messenger\TraceStamp`, and a message stamped
 by one major cannot be decoded by the other. Drain the async transports (or stop producers until
@@ -220,11 +242,11 @@ Everything else is `@internal`.
 |---|---|
 | Trace context (immutable) | `Domain\ValueObject\TraceContext`, `TraceParent`, `TraceState`, `Baggage`, `OutgoingTrace` |
 | Port | `Application\Port\TraceContextHolderInterface` (`current()`, `replace()`, `reset()`) |
-| Caller name | `Application\CallerName` |
+| Caller name, baggage hosts | `Application\CallerName`, `Application\BaggageRecipients` |
 | Messenger | `Framework\Messenger\IncomingTraceMiddleware`, `OutgoingTraceMiddleware`, `TraceStamp` |
 | Sentry | `Framework\Sentry\TracingIntegration` |
 | Guzzle | `Infrastructure\Guzzle\TraceGuzzleMiddleware` (`decorateHandler()`, `middleware()`) |
-| Bundle | `TracingBundle`; config keys `msstc4symfony_tracing.application_name` / `.component_name` |
+| Bundle | `TracingBundle`; config keys `msstc4symfony_tracing.application_name` / `.component_name` / `.baggage.allowed_hosts` |
 | Wire format | headers `traceparent`, `tracestate`, `baggage`, `traceresponse`; baggage member `msstc4symfony.caller`; log keys `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller` |
 
 ## Local development

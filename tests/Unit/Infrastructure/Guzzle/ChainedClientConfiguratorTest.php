@@ -10,6 +10,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
@@ -27,6 +28,7 @@ use PHPUnit\Framework\TestCase;
 #[UsesClass(TraceGuzzleMiddleware::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
 #[UsesClass(CallerName::class)]
+#[UsesClass(BaggageRecipients::class)]
 #[UsesClass(TraceContext::class)]
 #[UsesClass(RuntimeId::class)]
 #[UsesClass(OutgoingTrace::class)]

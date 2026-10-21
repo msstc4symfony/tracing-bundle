@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle;
 
+use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\BaggageRecipientsPass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\HttpClientPass;
 use Override;
@@ -22,6 +23,7 @@ final class TracingBundle extends AbstractBundle
     {
         parent::build($container);
 
+        $container->addCompilerPass(new BaggageRecipientsPass());
         $container->addCompilerPass(new HttpClientPass());
         // Child definitions (parent: ...) have their class resolved only by optimization passes.
         $container->addCompilerPass(new GuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
@@ -42,6 +44,20 @@ final class TracingBundle extends AbstractBundle
                     ->defaultValue('%env(default:msstc4symfony_tracing.unknown:COMPONENT_NAME)%')
                     ->cannotBeEmpty()
                 ->end()
+                ->arrayNode('baggage')
+                    ->addDefaultsIfNotSet()
+                    ->fixXmlConfig('allowed_host')
+                    ->children()
+                        ->arrayNode('allowed_hosts')
+                            ->info('Hosts outgoing HTTP requests send W3C baggage to: "orders", "10.0.0.1", "[::1]" or "*.example.com" for its subdomains. Not set: every host; empty: none. traceparent and tracestate go to every host.')
+                            ->example(['orders', '*.internal.example.com'])
+                            ->defaultNull()
+                            // A later file (when@prod) replaces the list rather than adding to it.
+                            ->performNoDeepMerging()
+                            ->stringPrototype()->end()
+                        ->end()
+                    ->end()
+                ->end()
             ->end()
         ;
     }
@@ -57,6 +73,7 @@ final class TracingBundle extends AbstractBundle
         $container->parameters()
             ->set('msstc4symfony_tracing.application_name', $config['application_name'])
             ->set('msstc4symfony_tracing.component_name', $config['component_name'])
+            ->set(BaggageRecipientsPass::PARAMETER, is_array($config['baggage']) ? $config['baggage']['allowed_hosts'] : null)
         ;
     }
 }

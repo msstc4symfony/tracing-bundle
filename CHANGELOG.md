@@ -4,6 +4,16 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.1.0] - 2026-10-21
+
+### Added
+
+- `msstc4symfony_tracing.baggage.allowed_hosts`: the hosts outgoing Symfony HttpClient and Guzzle requests send
+  W3C baggage to — host names, IP addresses or `*.domain` wildcards. Other hosts get no `baggage` from the bundle;
+  a `baggage` the caller set is sent unchanged, `traceparent` and `tracestate` go everywhere. Not set: every host,
+  as in 2.0. A literal invalid entry fails the container build.
+- `Application\BaggageRecipients`, an optional last argument of `TraceGuzzleMiddleware`.
+
 ## [2.0.0] - 2026-10-20
 
 Test and documentation fixes only since 2.0.0-rc.1.
@@ -132,6 +142,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.0
 [2.0.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.0.0
 [2.0.0-rc.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.0.0-rc.1
 [1.3.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v1.3.0

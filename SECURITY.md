@@ -38,8 +38,11 @@ Every outgoing HTTP request and dispatched message carries `traceparent`, the re
 `tracestate` and the received `baggage` plus `msstc4symfony.caller`
 (`APPLICATION_NAME:COMPONENT_NAME`), including requests to third-party APIs. Baggage received
 from a caller can therefore reach hosts that caller never talked to, and the caller member
-reveals internal naming. If that matters, set the headers explicitly on such requests — the
-bundle never replaces a header the caller set — or strip `baggage` at the egress proxy.
+reveals internal naming. If that matters, list the hosts that may receive baggage in
+`msstc4symfony_tracing.baggage.allowed_hosts` (other hosts get no `baggage` from the bundle; messages
+are not affected), set the headers explicitly on such requests — the bundle never replaces a header
+the caller set — or strip `baggage` at the egress proxy. `traceparent` and `tracestate` go to every
+host whatever the list says.
 
 ### 3. Long-running workers
 
