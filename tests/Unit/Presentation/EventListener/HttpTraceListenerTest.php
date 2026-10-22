@@ -196,6 +196,14 @@ final class HttpTraceListenerTest extends TestCase
         self::assertFalse($response->headers->has('traceresponse'));
     }
 
+    public function testListensToTheMainKernelEventsAtFixedPriorities(): void
+    {
+        self::assertSame(
+            [KernelEvents::REQUEST => ['onRequest', 2048], KernelEvents::RESPONSE => ['onResponse', 100]],
+            HttpTraceListener::getSubscribedEvents(),
+        );
+    }
+
     /**
      * @param array<string, string> $server
      */
@@ -207,13 +215,5 @@ final class HttpTraceListenerTest extends TestCase
     private function responseEvent(Response $response, int $type): ResponseEvent
     {
         return new ResponseEvent(self::createStub(HttpKernelInterface::class), new Request(), $type, $response);
-    }
-
-    public function testListensToTheMainKernelEventsAtFixedPriorities(): void
-    {
-        self::assertSame(
-            [KernelEvents::REQUEST => ['onRequest', 2048], KernelEvents::RESPONSE => ['onResponse', 100]],
-            HttpTraceListener::getSubscribedEvents(),
-        );
     }
 }

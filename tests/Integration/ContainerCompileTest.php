@@ -59,12 +59,6 @@ final class ContainerCompileTest extends KernelTestCase
         (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
-    #[Override]
-    protected static function getKernelClass(): string
-    {
-        return TestKernel::class;
-    }
-
     public function testTraceResponseNamesTheServerSpanOfTheIncomingTrace(): void
     {
         $kernel = self::bootKernel();
@@ -231,6 +225,12 @@ final class ContainerCompileTest extends KernelTestCase
         foreach (['test.bus.commands', 'test.bus.events'] as $busId) {
             self::assertContains($middleware, $this->middlewareOf($busId), $busId);
         }
+    }
+
+    #[Override]
+    protected static function getKernelClass(): string
+    {
+        return TestKernel::class;
     }
 
     private function skipUnless(bool $installed, string $package): void

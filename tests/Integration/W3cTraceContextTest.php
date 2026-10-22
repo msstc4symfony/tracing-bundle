@@ -67,12 +67,6 @@ final class W3cTraceContextTest extends KernelTestCase
         (new Filesystem())->remove(TestKernel::cacheRoot());
     }
 
-    #[Override]
-    protected static function getKernelClass(): string
-    {
-        return TestKernel::class;
-    }
-
     public function testIncomingTraceAndBaggageReachOutgoingHttpRequests(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
@@ -314,6 +308,12 @@ final class W3cTraceContextTest extends KernelTestCase
         } finally {
             $this->restoreEnv($saved);
         }
+    }
+
+    #[Override]
+    protected static function getKernelClass(): string
+    {
+        return TestKernel::class;
     }
 
     /**

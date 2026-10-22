@@ -95,14 +95,6 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
     }
 
     /**
-     * @param array<mixed> $options merged with withOptions(): a null of the request turns the transport's NTLM off
-     */
-    private function usesNtlm(array $options): bool
-    {
-        return array_key_exists('auth_ntlm', $options) ? $options['auth_ntlm'] !== null : $this->ntlmDefault;
-    }
-
-    /**
      * @param array<mixed> $options
      */
     #[Override]
@@ -115,5 +107,13 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
         $clone->defaults = ClientOptions::defaults($options, $this->defaults);
 
         return $clone;
+    }
+
+    /**
+     * @param array<mixed> $options merged with withOptions(): a null of the request turns the transport's NTLM off
+     */
+    private function usesNtlm(array $options): bool
+    {
+        return array_key_exists('auth_ntlm', $options) ? $options['auth_ntlm'] !== null : $this->ntlmDefault;
     }
 }

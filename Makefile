@@ -9,13 +9,13 @@ check: ## Check code (expects the composer-ci.json install, see install-ci)
 	vendor/bin/rector process -n
 	vendor/bin/deptrac analyse --config-file=deptrac.yaml --no-progress
 
-test: ## Test code (integration tests skip themselves when optional libraries are missing)
+test: ## Test code (integration tests may skip themselves without the composer-ci.json install)
 	vendor/bin/phpunit
 
 test-unit: ## Test code (unit suite only)
 	vendor/bin/phpunit --testsuite=unit
 
-test-integration: ## Test code (integration suite only, needs the composer-ci.json install)
+test-integration: ## Test code (integration suite only)
 	vendor/bin/phpunit --testsuite=integration
 
 test-with-coverage: ## Test code with coverage
@@ -41,4 +41,4 @@ help: ## List of all commands
 	| sed -e 's/\[32m## /[33m/' && printf "\n";
 
 .DEFAULT_GOAL := help
-.PHONY: help
+.PHONY: check test test-unit test-integration test-with-coverage infection install-ci regenerate-baseline fix help
