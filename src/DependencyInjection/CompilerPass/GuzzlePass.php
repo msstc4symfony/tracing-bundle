@@ -20,9 +20,9 @@ use Symfony\Component\DependencyInjection\Reference;
  * Traces every Guzzle client service. A client constructed by `GuzzleHttp\Client::__construct()`
  * gets the middleware in its `handler` config, which works on Guzzle 7 and 8 and leaves any
  * configurator of the application alone. Other clients (built by a factory, with their own
- * constructor or with a config resolved only at run time) are configured after creation through
- * `getConfig()`; clients without it cannot be reached and are only reported in the container
- * compilation log.
+ * constructor, with a config resolved only at run time or with options of the default handler
+ * and no `handler`) are configured after creation through `getConfig()`; clients without it
+ * cannot be reached and are only reported in the container compilation log.
  *
  * @internal
  */
@@ -30,6 +30,9 @@ final class GuzzlePass implements CompilerPassInterface
 {
     private const UNREACHABLE_CLIENT_LOG = 'Guzzle client "%s" is not traced: its handler cannot be set from an array config of %s::__construct() and it has no getConfig(); '
         . 'create it with the handler returned by %s::decorateHandler().';
+
+    // Options of the default handler, which Guzzle 8 Client::__construct() rejects or drops next to a "handler".
+    private const DEFAULT_HANDLER_OPTIONS = ['max_host_connections', 'max_total_connections', 'transport_sharing', 'multiplex'];
 
     #[Override]
     public function process(ContainerBuilder $container): void
@@ -86,7 +89,12 @@ final class GuzzlePass implements CompilerPassInterface
             return false;
         }
 
-        $config['handler'] = (new Definition(HandlerStack::class, [$config['handler'] ?? null]))
+        $handler = $config['handler'] ?? null;
+        if ($handler === null && array_intersect(self::DEFAULT_HANDLER_OPTIONS, array_keys($config)) !== []) {
+            return false;
+        }
+
+        $config['handler'] = (new Definition(HandlerStack::class, [$handler]))
             ->setFactory([$tracing, 'decorateHandler'])
         ;
         $definition->setArgument(0, $config);

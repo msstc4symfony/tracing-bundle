@@ -183,6 +183,62 @@ final class CompilerPassesTest extends TestCase
         self::assertEquals([['handler' => $this->tracedHandler(null)]], $container->getDefinition('own')->getArguments());
     }
 
+    #[TestWith(['max_host_connections', 4])]
+    #[TestWith(['max_total_connections', 16])]
+    #[TestWith(['transport_sharing', 'handler_require'])]
+    #[TestWith(['multiplex', 'none'])]
+    public function testConfiguresAClientWithDefaultHandlerOptionsAndNoHandler(string $option, int|string $value): void
+    {
+        $container = $this->guzzleContainer();
+        $container->setDefinition('pooled', new Definition(Client::class, [[$option => $value, 'timeout' => 3]]));
+
+        (new GuzzlePass())->process($container);
+
+        self::assertSame([[$option => $value, 'timeout' => 3]], $container->getDefinition('pooled')->getArguments());
+        self::assertEquals([new Reference(TraceGuzzleMiddleware::class), 'addHandler'], $container->getDefinition('pooled')->getConfigurator());
+    }
+
+    public function testConfiguresAClientWithDefaultHandlerOptionsAndANullHandler(): void
+    {
+        $container = $this->guzzleContainer();
+        $container->setDefinition('pooled', new Definition(Client::class, [['handler' => null, 'max_host_connections' => 4]]));
+
+        (new GuzzlePass())->process($container);
+
+        self::assertSame([['handler' => null, 'max_host_connections' => 4]], $container->getDefinition('pooled')->getArguments());
+        self::assertEquals([new Reference(TraceGuzzleMiddleware::class), 'addHandler'], $container->getDefinition('pooled')->getConfigurator());
+    }
+
+    public function testChainsTheOwnConfiguratorOfAClientWithDefaultHandlerOptions(): void
+    {
+        $container = $this->guzzleContainer();
+        $container->setDefinition('pooled', (new Definition(Client::class, [['max_host_connections' => 4]]))->setConfigurator(['app', 'configure']));
+
+        (new GuzzlePass())->process($container);
+
+        self::assertSame([['max_host_connections' => 4]], $container->getDefinition('pooled')->getArguments());
+        $configurator = $container->getDefinition('pooled')->getConfigurator();
+        self::assertIsArray($configurator);
+        self::assertSame('__invoke', $configurator[1]);
+        self::assertInstanceOf(Definition::class, $configurator[0]);
+        self::assertSame(ChainedClientConfigurator::class, $configurator[0]->getClass());
+        self::assertEquals([['app', 'configure'], new Reference(TraceGuzzleMiddleware::class)], $configurator[0]->getArguments());
+    }
+
+    public function testKeepsDecoratingAGivenHandlerNextToDefaultHandlerOptions(): void
+    {
+        $container = $this->guzzleContainer();
+        $container->setDefinition('pooled', new Definition(Client::class, [['handler' => new Reference('app.stack'), 'multiplex' => 'none']]));
+
+        (new GuzzlePass())->process($container);
+
+        self::assertEquals(
+            [['handler' => $this->tracedHandler(new Reference('app.stack')), 'multiplex' => 'none']],
+            $container->getDefinition('pooled')->getArguments(),
+        );
+        self::assertNull($container->getDefinition('pooled')->getConfigurator());
+    }
+
     public function testResolvesParameterisedClasses(): void
     {
         $container = $this->guzzleContainer();

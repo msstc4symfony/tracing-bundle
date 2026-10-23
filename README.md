@@ -73,7 +73,8 @@ msstc4symfony_tracing:
   * a client created by `GuzzleHttp\Client::__construct()` gets it in its `handler` config (its
     own `HandlerStack`, or Guzzle's default stack); a bare callable `handler` is left as is;
   * a client built by a factory or with its own constructor gets it after creation through
-    `getConfig('handler')` (every client on Guzzle 7, `GuzzleHttp\Client` on Guzzle 8);
+    `getConfig('handler')` (every client on Guzzle 7, `GuzzleHttp\Client` on Guzzle 8), as does one whose config
+    sets `max_host_connections`, `max_total_connections`, `transport_sharing` or `multiplex` without a `handler`;
   * any other Guzzle 8 client cannot be reached and is named in the container compiler log
     (`var/cache/<env>/*Compiler.log`, debug mode); create it with the handler from
     `TraceGuzzleMiddleware::decorateHandler()`, or push `TraceGuzzleMiddleware::middleware()`

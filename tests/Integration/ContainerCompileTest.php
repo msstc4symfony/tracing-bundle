@@ -153,6 +153,9 @@ final class ContainerCompileTest extends KernelTestCase
     #[TestWith([TestKernel::GUZZLE_STACK_CLIENT])]
     #[TestWith([TestKernel::GUZZLE_FACTORY_CLIENT])]
     #[TestWith([TestKernel::GUZZLE_FACTORY_CONFIGURED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_POOLED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_POOLED_CONFIGURED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_NON_MULTIPLEXING_CLIENT])]
     public function testGuzzleClientsSendTheTrace(string $id): void
     {
         $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
@@ -178,6 +181,7 @@ final class ContainerCompileTest extends KernelTestCase
 
     #[TestWith([TestKernel::GUZZLE_CONFIGURED_CLIENT])]
     #[TestWith([TestKernel::GUZZLE_FACTORY_CONFIGURED_CLIENT])]
+    #[TestWith([TestKernel::GUZZLE_POOLED_CONFIGURED_CLIENT])]
     public function testGuzzleClientsKeepTheirOwnConfigurator(string $id): void
     {
         $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');

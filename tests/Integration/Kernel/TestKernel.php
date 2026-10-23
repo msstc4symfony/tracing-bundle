@@ -42,6 +42,12 @@ final class TestKernel extends Kernel
 
     public const GUZZLE_FACTORY_CONFIGURED_CLIENT = 'test.guzzle.factory_configured';
 
+    public const GUZZLE_POOLED_CLIENT = 'test.guzzle.pooled';
+
+    public const GUZZLE_POOLED_CONFIGURED_CLIENT = 'test.guzzle.pooled_configured';
+
+    public const GUZZLE_NON_MULTIPLEXING_CLIENT = 'test.guzzle.non_multiplexing';
+
     public const SENTRY_INTEGRATION = 'test.sentry.integration';
 
     public const ENV_NAMED = 'named';
@@ -222,6 +228,20 @@ final class TestKernel extends Kernel
             $services->set(self::GUZZLE_FACTORY_CONFIGURED_CLIENT, Client::class)
                 ->factory(GuzzleClientFactory::create(...))
                 ->configurator([new Reference(AppGuzzleConfigurator::class), 'configure'])
+                ->public()
+            ;
+            // Guzzle 8 rejects or drops these options next to a "handler".
+            $services->set(self::GUZZLE_POOLED_CLIENT, Client::class)
+                ->args([['max_host_connections' => 4, 'max_total_connections' => 16]])
+                ->public()
+            ;
+            $services->set(self::GUZZLE_POOLED_CONFIGURED_CLIENT, Client::class)
+                ->args([['max_host_connections' => 4]])
+                ->configurator([new Reference(AppGuzzleConfigurator::class), 'configure'])
+                ->public()
+            ;
+            $services->set(self::GUZZLE_NON_MULTIPLEXING_CLIENT, Client::class)
+                ->args([['multiplex' => 'none']])
                 ->public()
             ;
         }

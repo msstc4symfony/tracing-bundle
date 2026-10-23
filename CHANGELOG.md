@@ -4,6 +4,16 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.1.3] - 2026-10-23
+
+### Fixed
+
+- A Guzzle 8 client whose config sets `max_host_connections`, `max_total_connections` or a `*_require`
+  `transport_sharing` and no `handler` can be created again, and one with `multiplex: none` or another
+  `transport_sharing` mode keeps the default handler Guzzle builds from it: Guzzle 8 rejects or ignores these options
+  next to a `handler`, so the bundle no longer injects one and adds its middleware after creation through
+  `getConfig('handler')`, after the client's own configurator if it has one.
+
 ## [2.1.2] - 2026-10-21
 
 ### Fixed
@@ -172,6 +182,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.1.3]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.3
 [2.1.2]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.2
 [2.1.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.1
 [2.1.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.0
