@@ -344,3 +344,7 @@ priority 100000).
 - Отложено осознанно (изменение на проводе, отдельный минор): флаг `random` (`02`) у новых трасс и `ot=th:` в
   `tracestate` (OTEP 235 adjusted count). Старый OTel `TraceIdRatioBased` (64 бита против `ratio * 2^63`) решает
   иначе — в README.
+- `TracingBundle::loadExtension()`: fallback `sampling.ratio` — `null`, не `1.0`: ветка недостижима (`addDefaultsIfNotSet()`),
+  `1.0` давал эквивалентный мутант, а `null` упал бы TypeError в `SampleRatio` (fail-fast), как и строка `baggage`.
+- `round()` PHP 8.4 сдвигает на +1 чётные целые float в [2^52, 2^53) (ratio в [1/16, 1/8)) — порог округляется вручную,
+  тест на p = 0.1 это фиксирует.

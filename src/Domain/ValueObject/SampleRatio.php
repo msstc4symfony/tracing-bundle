@@ -8,7 +8,7 @@ use InvalidArgumentException;
 
 /**
  * Share of new traces marked sampled, decided from the trace id alone (W3C Trace Context Level 2 / OpenTelemetry
- * TraceIdRatioBased): services with the same ratio make the same decision for a trace.
+ * probability sampling, OTEP 235): services with the same ratio make the same decision for a trace.
  */
 final readonly class SampleRatio
 {
@@ -29,8 +29,8 @@ final readonly class SampleRatio
             throw new InvalidArgumentException(sprintf('The sample ratio must be between 0 and 1, %F given.', $ratio));
         }
 
-        // OTEP 235: 2^56 - round(ratio * 2^56). The product is exact; round() is not used because PHP rounds whole floats
-        // above 2^52 up (round(7205759403792794.0) = 7205759403792795.0).
+        // OTEP 235: 2^56 - round(ratio * 2^56). The product is exact; PHP's round() is off by one for even whole floats
+        // in 2^52..2^53 (round(7205759403792794.0) = 7205759403792795.0).
         $scaled = $ratio * self::RANDOM_VALUES;
         $whole = (int) $scaled;
         $this->threshold = self::RANDOM_VALUES - ($scaled - $whole >= 0.5 ? $whole + 1 : $whole);
