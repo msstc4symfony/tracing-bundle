@@ -6,6 +6,7 @@ use GuzzleHttp\ClientInterface;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\IncomingTraceMiddleware;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\OutgoingTraceMiddleware;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\WorkerTraceSubscriber;
@@ -29,6 +30,9 @@ return static function (ContainerConfigurator $container): void {
     $services = $container->services();
     $services->defaults()->autowire()->autoconfigure();
 
+    $services->set(SampleRatio::class)
+        ->arg('$ratio', param('msstc4symfony_tracing.sampling.ratio'))
+    ;
     $services->set(InMemoryTraceContextHolder::class)
         ->tag('kernel.reset', ['method' => 'reset'])
     ;

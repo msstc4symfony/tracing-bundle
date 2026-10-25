@@ -23,7 +23,7 @@ final readonly class SampleRatio
     public function __construct(
         public float $ratio,
     ) {
-        if (!($ratio >= 0.0 && $ratio <= 1.0)) {
+        if (is_nan($ratio) || $ratio < 0.0 || $ratio > 1.0) {
             throw new InvalidArgumentException(sprintf('The sample ratio must be between 0 and 1, %F given.', $ratio));
         }
 

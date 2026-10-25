@@ -64,6 +64,8 @@ final class TestKernel extends Kernel
 
     public const ENV_BAGGAGE_TO_INVALID = 'baggage_to_invalid';
 
+    public const ENV_UNSAMPLED = 'unsampled';
+
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string
     {
@@ -175,6 +177,7 @@ final class TestKernel extends Kernel
             self::ENV_BAGGAGE_TO_EXAMPLE => ['baggage' => ['allowed_hosts' => ['orders', 'Example.com']]],
             self::ENV_BAGGAGE_TO_ORDERS => ['baggage' => ['allowed_hosts' => ['orders', '*.example.com']]],
             self::ENV_BAGGAGE_TO_INVALID => ['baggage' => ['allowed_hosts' => ['orders:8080']]],
+            self::ENV_UNSAMPLED => ['sampling' => ['ratio' => 0.0]],
             default => null,
         };
         if ($tracing !== null) {

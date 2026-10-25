@@ -90,6 +90,30 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertArrayNotHasKey('request-id', $sent);
     }
 
+    public function testARatioOfZeroSendsNewTracesUnsampled(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_UNSAMPLED]);
+
+        $kernel->handle(Request::create('/call'));
+
+        $outgoing = TraceParent::fromHeader($this->sentHeaders()['traceparent'] ?? '');
+        self::assertNotNull($outgoing);
+        self::assertSame(0, $outgoing->flags);
+    }
+
+    public function testARatioOfZeroKeepsTheCallersSampledFlag(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_UNSAMPLED]);
+
+        $kernel->handle(Request::create('/call', server: ['HTTP_TRACEPARENT' => self::TRACE_PARENT]));
+
+        $outgoing = TraceParent::fromHeader($this->sentHeaders()['traceparent'] ?? '');
+        self::assertNotNull($outgoing);
+        self::assertSame(TraceParent::FLAG_SAMPLED, $outgoing->flags);
+    }
+
     public function testNextRequestDoesNotInheritTheTrace(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');

@@ -19,7 +19,7 @@ interface TraceContextHolderInterface extends ResetInterface
     public function replace(TraceContext $context): void;
 
     /**
-     * Starts a new unit of work: replace(TraceContext::start()).
+     * Starts a new unit of work: a new trace, sampled by the configured ratio.
      */
     #[Override]
     public function reset(): void;

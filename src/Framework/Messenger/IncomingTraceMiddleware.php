@@ -6,6 +6,7 @@ namespace Msstc4Symfony\TracingBundle\Framework\Messenger;
 
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
@@ -32,6 +33,7 @@ final class IncomingTraceMiddleware implements MiddlewareInterface
 
     public function __construct(
         private readonly TraceContextHolderInterface $holder,
+        private readonly SampleRatio $sampleRatio = new SampleRatio(1.0),
     ) {
     }
 
@@ -79,7 +81,7 @@ final class IncomingTraceMiddleware implements MiddlewareInterface
         $stamp = $envelope->last(TraceStamp::class);
         if (!$stamp instanceof TraceStamp) {
             // Unstamped sync:// message: a child span of the dispatching unit.
-            $this->holder->replace($outer instanceof TraceContext ? $outer->withChildSpan() : TraceContext::start());
+            $this->holder->replace($outer instanceof TraceContext ? $outer->withChildSpan() : TraceContext::start($this->sampleRatio));
 
             return;
         }
@@ -88,7 +90,7 @@ final class IncomingTraceMiddleware implements MiddlewareInterface
         $received = TraceParent::fromHeader($stamp->traceParent);
 
         $this->holder->replace($received instanceof TraceParent
-            ? TraceContext::start()->continuing($received, TraceState::fromHeaders([$stamp->traceState]), $baggage)
-            : TraceContext::start()->withBaggage($baggage));
+            ? TraceContext::start($this->sampleRatio)->continuing($received, TraceState::fromHeaders([$stamp->traceState]), $baggage)
+            : TraceContext::start($this->sampleRatio)->withBaggage($baggage));
     }
 }

@@ -8,6 +8,7 @@ use Msstc4Symfony\TracingBundle\Application\CallerName;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\RuntimeId;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
@@ -37,6 +38,7 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
 #[UsesClass(TraceParent::class)]
 #[UsesClass(TraceState::class)]
 #[UsesClass(Baggage::class)]
+#[UsesClass(SampleRatio::class)]
 final class TraceMiddlewareTest extends TestCase
 {
     private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
@@ -153,6 +155,28 @@ final class TraceMiddlewareTest extends TestCase
         self::assertTrue($seen->baggage->isEmpty());
     }
 
+    public function testANewTraceOfAReceivedMessageFollowsTheRatio(): void
+    {
+        $unstamped = $this->handleReceived(new Envelope(new stdClass(), [new ReceivedStamp('async')]), new SampleRatio(0.0));
+        $invalid = $this->handleReceived(new Envelope(new stdClass(), [
+            new ReceivedStamp('async'),
+            new TraceStamp('00-00000000000000000000000000000000-00f067aa0ba902b7-01'),
+        ]), new SampleRatio(0.0));
+
+        self::assertSame(0, $unstamped->traceParent->flags);
+        self::assertSame(0, $invalid->traceParent->flags);
+    }
+
+    public function testAStampedTraceKeepsItsSampledFlagWhateverTheRatio(): void
+    {
+        $seen = $this->handleReceived(new Envelope(new stdClass(), [
+            new ReceivedStamp('async'),
+            new TraceStamp('00-' . self::TRACE_ID . '-00f067aa0ba902b7-01'),
+        ]), new SampleRatio(0.0));
+
+        self::assertSame(TraceParent::FLAG_SAMPLED, $seen->traceParent->flags);
+    }
+
     public function testSynchronousDispatchLeavesTheCallersTraceAlone(): void
     {
         $before = $this->holder->current();
@@ -198,10 +222,10 @@ final class TraceMiddlewareTest extends TestCase
         return new OutgoingTraceMiddleware($this->holder, new CallerName('shop', 'worker'));
     }
 
-    private function handleReceived(Envelope $envelope): TraceContext
+    private function handleReceived(Envelope $envelope, SampleRatio $ratio = new SampleRatio(1.0)): TraceContext
     {
         $seen = null;
-        (new IncomingTraceMiddleware($this->holder))->handle($envelope, $this->stackSeeing(function () use (&$seen): void {
+        (new IncomingTraceMiddleware($this->holder, $ratio))->handle($envelope, $this->stackSeeing(function () use (&$seen): void {
             $seen = $this->holder->current();
         }));
         self::assertInstanceOf(TraceContext::class, $seen);

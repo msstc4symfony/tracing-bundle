@@ -58,6 +58,17 @@ final class TracingBundle extends AbstractBundle
                         ->end()
                     ->end()
                 ->end()
+                ->arrayNode('sampling')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->floatNode('ratio')
+                            ->info('Share of new traces marked sampled (0..1); an incoming traceparent keeps its own flag.')
+                            ->min(0.0)
+                            ->max(1.0)
+                            ->defaultValue(1.0)
+                        ->end()
+                    ->end()
+                ->end()
             ->end()
         ;
     }
@@ -74,6 +85,7 @@ final class TracingBundle extends AbstractBundle
             ->set('msstc4symfony_tracing.application_name', $config['application_name'])
             ->set('msstc4symfony_tracing.component_name', $config['component_name'])
             ->set(BaggageRecipientsPass::PARAMETER, is_array($config['baggage']) ? $config['baggage']['allowed_hosts'] : null)
+            ->set('msstc4symfony_tracing.sampling.ratio', is_array($config['sampling']) ? $config['sampling']['ratio'] : 1.0)
         ;
     }
 }

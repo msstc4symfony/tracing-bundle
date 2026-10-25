@@ -4,6 +4,16 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.2.0] - 2026-10-25
+
+### Added
+
+- `sampling.ratio` (0..1, default 1.0): the share of new traces marked sampled. The decision depends on the trace id
+  alone (W3C Trace Context Level 2 / OpenTelemetry `TraceIdRatioBased`: the 56 lowest bits against the rejection
+  threshold), so services with one ratio decide alike. A trace continued from an incoming `traceparent` keeps the
+  caller's flag.
+- `Domain\ValueObject\SampleRatio`; `TraceParent::start()` and `TraceContext::start()` take an optional ratio.
+
 ## [2.1.3] - 2026-10-23
 
 ### Fixed
@@ -182,6 +192,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.2.0
 [2.1.3]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.3
 [2.1.2]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.2
 [2.1.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.1

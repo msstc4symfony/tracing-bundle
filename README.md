@@ -25,7 +25,7 @@ service it touches, OpenTelemetry-instrumented ones included:
 
 | Bundle  | PHP  | Symfony       |
 |---------|------|---------------|
-| 2.0     | 8.2+ | 7.4, 8.x      |
+| 2.0–2.2 | 8.2+ | 7.4, 8.x      |
 | 1.3     | 8.2+ | 7.4, 8.x      |
 | 1.0–1.2 | 8.4+ | 7.4, 8.x      |
 
@@ -87,7 +87,7 @@ Headers already set by the caller are never overwritten; see Baggage below for t
 
 ## W3C Trace Context
 
-Always on, nothing to configure.
+Always on; only the share of sampled new traces is configurable (see [Sampling](#sampling)).
 
 Incoming request (main requests only):
 
@@ -110,13 +110,32 @@ trace id the service started. A `traceresponse` the application set is kept.
 Outgoing (Symfony HttpClient, Guzzle, Messenger): `traceparent` with this unit's own span —
 the same trace id, flags and span id the unit logs — plus the received `tracestate`. Two calls
 from one unit therefore carry the same parent id. Without an incoming trace the unit starts
-one: random 16-byte trace id, 8-byte span id, flags `01`. A `traceparent` set by the caller is
+one: random 16-byte trace id, 8-byte span id, flags `01` (or `00` when [sampling](#sampling) says so). A `traceparent` set by the caller is
 kept with no `tracestate` added; a `tracestate` set by the caller is kept too.
 
 Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
 (the `traceparent` received over HTTP or in a `TraceStamp`), `null` when the unit started the
 trace. As outgoing calls send the unit's own span, a receiver's `parent_span_id` is a `span_id` in
 the sender's logs, so the logs of every service rebuild the call tree.
+
+### Sampling
+
+The bundle records no spans itself; the sampled flag tells span exporters (such as
+`msstc4symfony/tracing-bridge-otlp`) and downstream services whether to record this trace.
+
+```yaml
+msstc4symfony_tracing:
+  sampling:
+    ratio: 0.1 # 0..1, default 1.0: every new trace is sampled
+```
+
+* Parent-based: a trace continued from an incoming `traceparent` (HTTP or `TraceStamp`) keeps the
+  caller's flag, whatever the ratio. The ratio decides only for traces this service starts.
+* The decision depends on the trace id alone, as W3C Trace Context Level 2 and OpenTelemetry's
+  `TraceIdRatioBased` sampler define it: the 56 lowest bits of the trace id are compared with the
+  rejection threshold `(1 - ratio) * 2^56`. Services with the same ratio decide alike; OpenTelemetry
+  SDKs agree up to the rounding of their threshold.
+* A value outside `0..1` fails configuration processing.
 
 ## W3C Baggage
 
@@ -265,13 +284,13 @@ Everything else is `@internal`.
 
 | Kind | Name |
 |---|---|
-| Trace context (immutable) | `Domain\ValueObject\TraceContext`, `TraceParent`, `TraceState`, `Baggage`, `OutgoingTrace` |
+| Trace context (immutable) | `Domain\ValueObject\TraceContext`, `TraceParent`, `TraceState`, `Baggage`, `OutgoingTrace`, `SampleRatio` |
 | Port | `Application\Port\TraceContextHolderInterface` (`current()`, `replace()`, `reset()`) |
 | Caller name, baggage hosts | `Application\CallerName`, `Application\BaggageRecipients` |
 | Messenger | `Framework\Messenger\IncomingTraceMiddleware`, `OutgoingTraceMiddleware`, `TraceStamp` |
 | Sentry | `Framework\Sentry\TracingIntegration` |
 | Guzzle | `Infrastructure\Guzzle\TraceGuzzleMiddleware` (`decorateHandler()`, `middleware()`) |
-| Bundle | `TracingBundle`; config keys `msstc4symfony_tracing.application_name` / `.component_name` / `.baggage.allowed_hosts` |
+| Bundle | `TracingBundle`; config keys `msstc4symfony_tracing.application_name` / `.component_name` / `.baggage.allowed_hosts` / `.sampling.ratio` |
 | Wire format | headers `traceparent`, `tracestate`, `baggage`, `traceresponse`; baggage member `msstc4symfony.caller`; log keys `runtime_id`, `trace_id`, `span_id`, `parent_span_id`, `caller` |
 
 ## Local development
