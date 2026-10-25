@@ -50,6 +50,17 @@ final class SampleRatioTest extends TestCase
         self::assertEqualsWithDelta(2500, $sampled, 200);
     }
 
+    #[TestWith(['4bf92f3577b34da6a3ce929d0e0e47'])]
+    #[TestWith(['4BF92F3577B34DA6A3CE929D0E0E4736'])]
+    #[TestWith(['zzf92f3577b34da6a3ce929d0e0e4736'])]
+    #[TestWith(["4bf92f3577b34da6a3ce929d0e0e4736\n"])]
+    public function testRejectsAnInvalidTraceId(string $traceId): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        SampleRatio::always()->samples($traceId);
+    }
+
     #[TestWith([-0.01])]
     #[TestWith([1.01])]
     #[TestWith([NAN])]

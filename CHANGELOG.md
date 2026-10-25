@@ -10,7 +10,8 @@ All notable changes to this bundle are documented here. The format follows
 
 - `sampling.ratio` (0..1, default 1.0): the share of new traces marked sampled. The decision depends on the trace id
   alone (W3C Trace Context Level 2 / OpenTelemetry `TraceIdRatioBased`: the 56 lowest bits against the rejection
-  threshold), so services with one ratio decide alike. A trace continued from an incoming `traceparent` keeps the
+  threshold), so services with one ratio decide alike; the older OpenTelemetry sampler that compares the lowest 64 bits
+  may decide differently. A trace continued from an incoming `traceparent` keeps the
   caller's flag.
 - `Domain\ValueObject\SampleRatio`; `TraceParent::start()` and `TraceContext::start()` take an optional ratio.
 

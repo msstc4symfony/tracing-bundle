@@ -78,8 +78,9 @@ final readonly class TraceParent
     public static function start(?SampleRatio $ratio = null): self
     {
         $traceId = self::randomId(16, self::INVALID_TRACE_ID);
+        $flags = !$ratio instanceof SampleRatio || $ratio->samples($traceId) ? self::FLAG_SAMPLED : 0;
 
-        return new self($traceId, self::randomId(8, self::INVALID_SPAN_ID), ($ratio ?? SampleRatio::always())->samples($traceId) ? self::FLAG_SAMPLED : 0);
+        return new self($traceId, self::randomId(8, self::INVALID_SPAN_ID), $flags);
     }
 
     /**

@@ -59,6 +59,27 @@ PHPStan гоняется на Guzzle 8 (CI-профиль, highest): `method_exi
 Проверка тестами — по поведению: `ContainerCompileTest::assertSendsTheTrace()` подменяет
 транспорт стека (`setHandler(RecordingGuzzleTransport)`) и смотрит заголовки.
 
+## Guzzle 8: опции дефолтного handler несовместимы с `handler` (2.1.3, 2026-10-23 UTC)
+
+До 2.1.3 пасс вставлял сгенерированный `handler` в конфиг любого `new GuzzleHttp\Client([...])`, и
+Guzzle 8 (8.2.0) падал уже при создании клиента: `Client::__construct()`
+(`vendor/guzzlehttp/guzzle/src/Client.php`, ~строки 167–206) строит дефолтный handler из
+`max_host_connections` / `max_total_connections` (через `Utils::chooseHandler()`), а при заданном
+`handler` бросает `InvalidArgumentException` на непустые лимиты и на `transport_sharing`
+`handler_require` / `persistent_require`. С `handler` молча теряется и выбор handler'а: режимы
+`transport_sharing` `*_prefer` и handler без мультиплексирования для `multiplex: none` (сама опция
+`multiplex` при этом остаётся дефолтной опцией запроса — Guzzle её не удаляет из конфига, строка ~180). Теперь `GuzzlePass::DEFAULT_HANDLER_OPTIONS` (тот же список, что в
+`metrics-bundle` `AddGuzzleMonitorPass`): если в конфиге есть хоть один такой ключ и нет `handler`,
+`traceThroughConfig()` возвращает false и клиент идёт путём configurator (`addHandler`, или
+`ChainedClientConfigurator` при своём configurator) — у `GuzzleHttp\Client` `getConfig()` есть всегда,
+так что ветка compiler log здесь не достигается. Проверяется наличие ключа, а не значение (как в
+metrics-bundle): `max_host_connections: null` тоже уходит в configurator — безвредно. Если `handler`
+задан вместе с такими опциями, пасс по-прежнему декорирует его: клиент сломан конфигом самого
+приложения. Явный `'handler' => null` считается отсутствием handler и остаётся в аргументах. Ловят
+`CompilerPassesTest::testConfiguresAClientWithDefaultHandlerOptions*` и kernel-клиенты
+`test.guzzle.pooled*` / `test.guzzle.non_multiplexing` в `ContainerCompileTest` (на Guzzle 7 опции просто лежат в
+конфиге, тесты проходят без skip).
+
 ## Эквивалентный мутант `TraceGuzzleMiddleware::decorateHandler()`
 
 `remove(MIDDLEWARE_NAME)` перед `push()` не убить: второй экземпляр middleware видит уже
@@ -305,3 +326,16 @@ priority 100000).
 - Финальное ревью 2.1.1: объекты в форме обходятся как в `normalizeBody` (`RedirectFollower::leaves()`: публичные
   свойства рекурсивно, объект без свойств — лист) — иначе поток в свойстве объекта не перематывался («Uploaded stream
   ended for body part "o[f]"»). Строковый default query отдаётся внутреннему клиенту (`TypeError`, как транспорт).
+
+## Сэмплинг 2.2.0: решения ревью (2026-10-25 UTC)
+
+- `FloatNode` оставляет int как есть: `ratio: 0` дошёл бы до контейнера int'ом. В `configure()` есть
+  `beforeNormalization()->always(...)`, приводящий int к float (`ExprBuilder::ifInt()` не существует).
+- `(1 - ratio) * 2^56` — всегда целое для float ratio в 0..1 (шаг float там кратен 8), поэтому `ceil`/`max`/`min`
+  убраны: их мутанты были эквивалентными.
+- Rector `NegatedAndsToPositiveOrsRector` переписал бы `!($r >= 0 && $r <= 1)` в форму, пропускающую NAN —
+  поэтому явный `is_nan()`.
+- `SampleRatio::samples()` публичный → валидирует trace id (32 lowercase hex), иначе `InvalidArgumentException`.
+- Отложено осознанно (изменение на проводе, отдельный минор): флаг `random` (`02`) у новых трасс и `ot=th:` в
+  `tracestate` (OTEP 235 adjusted count). Старый OTel `TraceIdRatioBased` (64 бита против `ratio * 2^63`) решает
+  иначе — в README.

@@ -133,9 +133,13 @@ msstc4symfony_tracing:
   caller's flag, whatever the ratio. The ratio decides only for traces this service starts.
 * The decision depends on the trace id alone, as W3C Trace Context Level 2 and OpenTelemetry's
   `TraceIdRatioBased` sampler define it: the 56 lowest bits of the trace id are compared with the
-  rejection threshold `(1 - ratio) * 2^56`. Services with the same ratio decide alike; OpenTelemetry
-  SDKs agree up to the rounding of their threshold.
+  rejection threshold `(1 - ratio) * 2^56`. Services with the same ratio decide alike, and so do
+  OpenTelemetry SDKs that implement this threshold (OpenTelemetry probability sampling, OTEP 235) up
+  to its rounding; the older `TraceIdRatioBased` (the lowest 64 bits against `ratio * 2^63`) may decide
+  differently.
 * A value outside `0..1` fails configuration processing.
+* New traces keep flags `01`: the random flag (`02`) and the `ot=th:` threshold in `tracestate` are
+  not sent.
 
 ## W3C Baggage
 

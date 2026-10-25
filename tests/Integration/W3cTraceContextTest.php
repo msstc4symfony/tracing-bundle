@@ -114,6 +114,16 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertSame(TraceParent::FLAG_SAMPLED, $outgoing->flags);
     }
 
+    public function testARatioOfZeroConsumesUnstampedMessagesUnsampled(): void
+    {
+        $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
+        self::bootKernel(['environment' => TestKernel::ENV_UNSAMPLED]);
+
+        $this->bus()->dispatch(new Envelope(new TracedMessage(), [new ReceivedStamp('async')]));
+
+        self::assertSame(0, $this->holder()->current()->traceParent->flags);
+    }
+
     public function testNextRequestDoesNotInheritTheTrace(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');

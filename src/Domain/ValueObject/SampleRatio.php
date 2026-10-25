@@ -15,9 +15,11 @@ final readonly class SampleRatio
     // The 56 lowest bits of the trace id: 14 hex digits.
     private const RANDOM_HEX_DIGITS = 14;
 
+    private const TRACE_ID = '/^[0-9a-f]{32}$/D';
+
     private const RANDOM_VALUES = 2 ** 56;
 
-    /** @var int<0, 72057594037927936> trace ids whose random part is below it are not sampled */
+    // Trace ids whose random part is below it are not sampled.
     private int $threshold;
 
     public function __construct(
@@ -27,7 +29,8 @@ final readonly class SampleRatio
             throw new InvalidArgumentException(sprintf('The sample ratio must be between 0 and 1, %F given.', $ratio));
         }
 
-        $this->threshold = max(0, min(self::RANDOM_VALUES, (int) ceil((1.0 - $ratio) * self::RANDOM_VALUES)));
+        // Exact: (1 - ratio) * 2^56 is a whole number for every float ratio in 0..1, so no rounding is needed.
+        $this->threshold = (int) ((1.0 - $ratio) * self::RANDOM_VALUES);
     }
 
     public static function always(): self
@@ -35,8 +38,17 @@ final readonly class SampleRatio
         return new self(1.0);
     }
 
+    /**
+     * @param string $traceId 32 lowercase hex digits
+     *
+     * @throws InvalidArgumentException for anything else
+     */
     public function samples(string $traceId): bool
     {
+        if (preg_match(self::TRACE_ID, $traceId) !== 1) {
+            throw new InvalidArgumentException(sprintf('A trace id is 32 lowercase hex digits, "%s" given.', $traceId));
+        }
+
         return hexdec(substr($traceId, -self::RANDOM_HEX_DIGITS)) >= $this->threshold;
     }
 }

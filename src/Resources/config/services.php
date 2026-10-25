@@ -21,6 +21,7 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 
 use function Symfony\Component\DependencyInjection\Loader\Configurator\param;
+use function Symfony\Component\DependencyInjection\Loader\Configurator\service;
 
 return static function (ContainerConfigurator $container): void {
     $container->parameters()
@@ -30,10 +31,11 @@ return static function (ContainerConfigurator $container): void {
     $services = $container->services();
     $services->defaults()->autowire()->autoconfigure();
 
-    $services->set(SampleRatio::class)
+    $services->set('msstc4symfony_tracing.sample_ratio', SampleRatio::class)
         ->arg('$ratio', param('msstc4symfony_tracing.sampling.ratio'))
     ;
     $services->set(InMemoryTraceContextHolder::class)
+        ->arg('$sampleRatio', service('msstc4symfony_tracing.sample_ratio'))
         ->tag('kernel.reset', ['method' => 'reset'])
     ;
     $services->alias(TraceContextHolderInterface::class, InMemoryTraceContextHolder::class)->public();
@@ -57,7 +59,9 @@ return static function (ContainerConfigurator $container): void {
     }
 
     if (interface_exists(MiddlewareInterface::class)) {
-        $services->set(IncomingTraceMiddleware::class);
+        $services->set(IncomingTraceMiddleware::class)
+            ->arg('$sampleRatio', service('msstc4symfony_tracing.sample_ratio'))
+        ;
         $services->set(OutgoingTraceMiddleware::class);
         $services->set(WorkerTraceSubscriber::class);
     }

@@ -222,7 +222,7 @@ final class TraceMiddlewareTest extends TestCase
         return new OutgoingTraceMiddleware($this->holder, new CallerName('shop', 'worker'));
     }
 
-    private function handleReceived(Envelope $envelope, SampleRatio $ratio = new SampleRatio(1.0)): TraceContext
+    private function handleReceived(Envelope $envelope, ?SampleRatio $ratio = null): TraceContext
     {
         $seen = null;
         (new IncomingTraceMiddleware($this->holder, $ratio))->handle($envelope, $this->stackSeeing(function () use (&$seen): void {

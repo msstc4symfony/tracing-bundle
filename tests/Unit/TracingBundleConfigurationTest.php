@@ -50,6 +50,11 @@ final class TracingBundleConfigurationTest extends TestCase
         self::assertSame(['ratio' => 0.25], $this->sampling([['sampling' => ['ratio' => 0.25]]]));
     }
 
+    public function testAcceptsAnIntegerRatio(): void
+    {
+        self::assertSame(['ratio' => 0.0], $this->sampling([['sampling' => ['ratio' => 0]]]));
+    }
+
     #[TestWith([-0.1])]
     #[TestWith([1.5])]
     public function testRejectsARatioOutsideZeroToOne(float $ratio): void

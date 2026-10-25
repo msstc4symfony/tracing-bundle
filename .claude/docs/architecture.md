@@ -1,4 +1,4 @@
-# Архитектура (2.1.1)
+# Архитектура (2.2.0)
 
 Спек: `../docs/superpowers/specs/2026-10-20-tracing-2-w3c-design.md` (B3). Только W3C Trace Context + W3C
 Baggage; `request-id`/`request-from` удалены в 2.0.
@@ -72,7 +72,8 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
   `baggage: …` удаляются — `normalizeHeaders` оставил бы последнюю). Так клиентский baggage Sentry (`sentry-*`,
   ставится на `http_client` до транспорта) не отрезает принятые члены. `Stringable`-значения читаются как строки.
 - Guzzle (`GuzzlePass`, `TYPE_BEFORE_REMOVING`): три пути как в 1.x — `handler` в конфиге конструктора
-  `GuzzleHttp\Client` (inline `Definition(HandlerStack)` с factory `decorateHandler`), configurator `addHandler`
+  `GuzzleHttp\Client` (inline `Definition(HandlerStack)` с factory `decorateHandler`; не при опциях дефолтного
+  handler без `handler` — `DEFAULT_HANDLER_OPTIONS`, см. known-issues), configurator `addHandler`
   (с `ChainedClientConfigurator`, если у клиента свой), иначе запись в compiler log. PSR-7: при заданном
   baggage недостающие члены → `withAddedHeader()`. `GuzzleTracingMiddleware` Sentry *заменяет* `baggage` — он
   должен выполняться раньше нашего (README).
@@ -144,3 +145,14 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
 ## Не-final классы
 
 Нет: все классы `src/` — `final` или `final readonly`.
+
+## Сэмплинг (2.2.0)
+
+Спек: `../docs/superpowers/specs/2026-10-25-otlp-span-export-design.md` §2. `sampling.ratio` (0..1, по умолчанию 1.0)
+→ параметр `msstc4symfony_tracing.sampling.ratio` → сервис `msstc4symfony_tracing.sample_ratio` (`SampleRatio`,
+не FQCN-id, чтобы autowiring приложения его не подхватывал) → явный `$sampleRatio` у `InMemoryTraceContextHolder`
+(`reset()`, конструктор) и `IncomingTraceMiddleware` (новая трасса сообщения). Решение: младшие 56 бит (14 hex)
+trace id ≥ `(1 - ratio) * 2^56` (W3C L2 / OTEP 235). Parent-based: `continuing()` берёт флаг входящего
+`traceparent`. `null` ratio во всех точках = «всегда sampled» без создания объекта (иначе strict coverage
+metadata делает risky каждый тест, стартующий трассу). Сам бандл спаны не пишет: флаг читают экспортёры
+(`tracing-bridge-otlp`) и downstream.

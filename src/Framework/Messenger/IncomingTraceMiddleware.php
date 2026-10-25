@@ -33,7 +33,7 @@ final class IncomingTraceMiddleware implements MiddlewareInterface
 
     public function __construct(
         private readonly TraceContextHolderInterface $holder,
-        private readonly SampleRatio $sampleRatio = new SampleRatio(1.0),
+        private readonly ?SampleRatio $sampleRatio = null,
     ) {
     }
 

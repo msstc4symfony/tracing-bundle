@@ -63,6 +63,8 @@ final class TracingBundle extends AbstractBundle
                     ->children()
                         ->floatNode('ratio')
                             ->info('Share of new traces marked sampled (0..1); an incoming traceparent keeps its own flag.')
+                            // FloatNode keeps an int as is: "ratio: 0" would reach the container as int.
+                            ->beforeNormalization()->always(static fn (mixed $ratio): mixed => is_int($ratio) ? (float) $ratio : $ratio)->end()
                             ->min(0.0)
                             ->max(1.0)
                             ->defaultValue(1.0)

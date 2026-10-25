@@ -17,7 +17,7 @@ final class InMemoryTraceContextHolder implements TraceContextHolderInterface
     private TraceContext $context;
 
     public function __construct(
-        private readonly SampleRatio $sampleRatio = new SampleRatio(1.0),
+        private readonly ?SampleRatio $sampleRatio = null,
     ) {
         $this->context = TraceContext::start($this->sampleRatio);
     }
