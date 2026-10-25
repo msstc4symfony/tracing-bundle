@@ -29,8 +29,11 @@ final readonly class SampleRatio
             throw new InvalidArgumentException(sprintf('The sample ratio must be between 0 and 1, %F given.', $ratio));
         }
 
-        // Exact: (1 - ratio) * 2^56 is a whole number for every float ratio in 0..1, so no rounding is needed.
-        $this->threshold = (int) ((1.0 - $ratio) * self::RANDOM_VALUES);
+        // OTEP 235: 2^56 - round(ratio * 2^56). The product is exact; round() is not used because PHP rounds whole floats
+        // above 2^52 up (round(7205759403792794.0) = 7205759403792795.0).
+        $scaled = $ratio * self::RANDOM_VALUES;
+        $whole = (int) $scaled;
+        $this->threshold = self::RANDOM_VALUES - ($scaled - $whole >= 0.5 ? $whole + 1 : $whole);
     }
 
     public static function always(): self

@@ -152,7 +152,7 @@ Public API (без `@internal`): Domain целиком, порт, `CallerName`, 
 → параметр `msstc4symfony_tracing.sampling.ratio` → сервис `msstc4symfony_tracing.sample_ratio` (`SampleRatio`,
 не FQCN-id, чтобы autowiring приложения его не подхватывал) → явный `$sampleRatio` у `InMemoryTraceContextHolder`
 (`reset()`, конструктор) и `IncomingTraceMiddleware` (новая трасса сообщения). Решение: младшие 56 бит (14 hex)
-trace id ≥ `(1 - ratio) * 2^56` (W3C L2 / OTEP 235). Parent-based: `continuing()` берёт флаг входящего
+trace id ≥ `2^56 - round(ratio * 2^56)` (W3C L2 / OTEP 235). Parent-based: `continuing()` берёт флаг входящего
 `traceparent`. `null` ratio во всех точках = «всегда sampled» без создания объекта (иначе strict coverage
 metadata делает risky каждый тест, стартующий трассу). Сам бандл спаны не пишет: флаг читают экспортёры
 (`tracing-bridge-otlp`) и downstream.

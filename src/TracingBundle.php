@@ -87,7 +87,7 @@ final class TracingBundle extends AbstractBundle
             ->set('msstc4symfony_tracing.application_name', $config['application_name'])
             ->set('msstc4symfony_tracing.component_name', $config['component_name'])
             ->set(BaggageRecipientsPass::PARAMETER, is_array($config['baggage']) ? $config['baggage']['allowed_hosts'] : null)
-            ->set('msstc4symfony_tracing.sampling.ratio', is_array($config['sampling']) ? $config['sampling']['ratio'] : 1.0)
+            ->set('msstc4symfony_tracing.sampling.ratio', is_array($config['sampling']) ? $config['sampling']['ratio'] : null)
         ;
     }
 }

@@ -90,7 +90,7 @@ final class IncomingTraceMiddleware implements MiddlewareInterface
         $received = TraceParent::fromHeader($stamp->traceParent);
 
         $this->holder->replace($received instanceof TraceParent
-            ? TraceContext::start($this->sampleRatio)->continuing($received, TraceState::fromHeaders([$stamp->traceState]), $baggage)
+            ? TraceContext::start()->continuing($received, TraceState::fromHeaders([$stamp->traceState]), $baggage)
             : TraceContext::start($this->sampleRatio)->withBaggage($baggage));
     }
 }

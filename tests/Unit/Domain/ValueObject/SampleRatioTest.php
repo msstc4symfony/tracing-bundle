@@ -39,6 +39,24 @@ final class SampleRatioTest extends TestCase
         self::assertTrue($half->samples('0000000000000000008fffffffffffff'));
     }
 
+    public function testTheThresholdMatchesOpenTelemetryRounding(): void
+    {
+        // OTEP 235: 2^56 - round(0.1 * 2^56) = 0xe6666666666666.
+        $tenth = new SampleRatio(0.1);
+
+        self::assertTrue($tenth->samples('000000000000000000e6666666666666'));
+        self::assertFalse($tenth->samples('000000000000000000e6666666666665'));
+    }
+
+    public function testAHalfRoundsTheSampledShareUp(): void
+    {
+        // 7.5 / 2^56 * 2^56 = 7.5 rounds to 8: threshold 2^56 - 8.
+        $tiny = new SampleRatio(7.5 / 2 ** 56);
+
+        self::assertTrue($tiny->samples('000000000000000000fffffffffffff8'));
+        self::assertFalse($tiny->samples('000000000000000000fffffffffffff7'));
+    }
+
     public function testTheShareOfSampledRandomTracesFollowsTheRatio(): void
     {
         $ratio = new SampleRatio(0.25);

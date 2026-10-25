@@ -331,8 +331,13 @@ priority 100000).
 
 - `FloatNode` оставляет int как есть: `ratio: 0` дошёл бы до контейнера int'ом. В `configure()` есть
   `beforeNormalization()->always(...)`, приводящий int к float (`ExprBuilder::ifInt()` не существует).
-- `(1 - ratio) * 2^56` — всегда целое для float ratio в 0..1 (шаг float там кратен 8), поэтому `ceil`/`max`/`min`
-  убраны: их мутанты были эквивалентными.
+- Порог `2^56 - round(ratio * 2^56)` (OTEP 235): `(1 - ratio)` округлялось бы раньше умножения и для ratio < 0.5
+  расходилось с OTel на несколько единиц из 2^56 (p = 0.1: 0xe6666666666668 против 0xe6666666666666). NAN конфиг не ловит
+  никак: `BaseNode::normalize()/finalize()` видят `NAN !== NAN` как плейсхолдер и пропускают все проверки (с warning
+  `foreach() argument must be of type array`) для всего дерева с NAN. Проверку в `loadExtension()` не покрыть
+  unit-тестом (импорт `services.php` делает тест risky), поэтому NAN, как и env-значения, отклоняет конструктор
+  `SampleRatio` при первом старте трассы. Решение по ratio в ветке `continuing` middleware не
+  считается (флаг всё равно берётся из stamp).
 - Rector `NegatedAndsToPositiveOrsRector` переписал бы `!($r >= 0 && $r <= 1)` в форму, пропускающую NAN —
   поэтому явный `is_nan()`.
 - `SampleRatio::samples()` публичный → валидирует trace id (32 lowercase hex), иначе `InvalidArgumentException`.

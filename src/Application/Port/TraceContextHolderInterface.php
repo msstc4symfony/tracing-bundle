@@ -19,7 +19,7 @@ interface TraceContextHolderInterface extends ResetInterface
     public function replace(TraceContext $context): void;
 
     /**
-     * Starts a new unit of work: a new trace, sampled by the configured ratio.
+     * Starts a new unit of work with a new trace (the bundle's holder applies sampling.ratio).
      */
     #[Override]
     public function reset(): void;
