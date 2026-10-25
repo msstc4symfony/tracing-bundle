@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Test\Unit\Domain\ValueObject;
 
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
 /**
  * Vectors follow https://www.w3.org/TR/trace-context/#traceparent-header.
  */
 #[CoversClass(TraceParent::class)]
+#[UsesClass(SampleRatio::class)]
 final class TraceParentTest extends TestCase
 {
     private const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
@@ -128,5 +131,21 @@ final class TraceParentTest extends TestCase
         self::assertSame('traceparent', TraceParent::HEADER);
         self::assertSame('traceresponse', TraceParent::RESPONSE_HEADER);
         self::assertSame('tracestate', TraceState::HEADER);
+    }
+
+    public function testANewTraceIsSampledByDefault(): void
+    {
+        self::assertSame(TraceParent::FLAG_SAMPLED, TraceParent::start()->flags);
+    }
+
+    public function testANewTraceFollowsTheRatio(): void
+    {
+        self::assertSame(0, TraceParent::start(new SampleRatio(0.0))->flags);
+        self::assertSame(TraceParent::FLAG_SAMPLED, TraceParent::start(new SampleRatio(1.0))->flags);
+    }
+
+    public function testAChildKeepsAnUnsampledFlag(): void
+    {
+        self::assertSame(0, TraceParent::start(new SampleRatio(0.0))->child()->flags);
     }
 }

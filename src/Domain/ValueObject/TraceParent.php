@@ -73,11 +73,13 @@ final readonly class TraceParent
     }
 
     /**
-     * A new sampled trace: random 16-byte trace id and 8-byte span id.
+     * A new trace: random 16-byte trace id and 8-byte span id, sampled when the ratio says so.
      */
-    public static function start(): self
+    public static function start(?SampleRatio $ratio = null): self
     {
-        return new self(self::randomId(16, self::INVALID_TRACE_ID), self::randomId(8, self::INVALID_SPAN_ID), self::FLAG_SAMPLED);
+        $traceId = self::randomId(16, self::INVALID_TRACE_ID);
+
+        return new self($traceId, self::randomId(8, self::INVALID_SPAN_ID), ($ratio ?? SampleRatio::always())->samples($traceId) ? self::FLAG_SAMPLED : 0);
     }
 
     /**

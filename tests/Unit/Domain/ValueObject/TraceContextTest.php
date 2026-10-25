@@ -7,6 +7,7 @@ namespace Msstc4Symfony\TracingBundle\Test\Unit\Domain\ValueObject;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\OutgoingTrace;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\RuntimeId;
+use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
@@ -20,6 +21,7 @@ use PHPUnit\Framework\TestCase;
 #[UsesClass(TraceState::class)]
 #[UsesClass(Baggage::class)]
 #[UsesClass(RuntimeId::class)]
+#[UsesClass(SampleRatio::class)]
 final class TraceContextTest extends TestCase
 {
     private const UUID_V4 = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D';
@@ -115,5 +117,20 @@ final class TraceContextTest extends TestCase
         self::assertSame('orders:api', $outgoing->baggage->get(TraceContext::CALLER_KEY));
         self::assertSame('alice', $outgoing->baggage->get('user'));
         self::assertSame('gateway:web', $context->caller());
+    }
+
+    public function testStartPassesTheRatioToTheNewTrace(): void
+    {
+        self::assertSame(0, TraceContext::start(new SampleRatio(0.0))->traceParent->flags);
+    }
+
+    public function testAContinuedTraceKeepsTheReceivedFlagWhateverTheRatio(): void
+    {
+        $received = TraceParent::fromHeader('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
+        self::assertNotNull($received);
+
+        $context = TraceContext::start(new SampleRatio(0.0))->continuing($received, null, Baggage::empty());
+
+        self::assertSame(TraceParent::FLAG_SAMPLED, $context->traceParent->flags);
     }
 }

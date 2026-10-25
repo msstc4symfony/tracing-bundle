@@ -27,9 +27,9 @@ final readonly class TraceContext
     ) {
     }
 
-    public static function start(): self
+    public static function start(?SampleRatio $ratio = null): self
     {
-        return new self(RuntimeId::generate(), TraceParent::start(), null, null, Baggage::empty(), null);
+        return new self(RuntimeId::generate(), TraceParent::start($ratio), null, null, Baggage::empty(), null);
     }
 
     /**
