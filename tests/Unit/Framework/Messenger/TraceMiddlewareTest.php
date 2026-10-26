@@ -163,8 +163,8 @@ final class TraceMiddlewareTest extends TestCase
             new TraceStamp('00-00000000000000000000000000000000-00f067aa0ba902b7-01'),
         ]), new SampleRatio(0.0));
 
-        self::assertSame(0, $unstamped->traceParent->flags);
-        self::assertSame(0, $invalid->traceParent->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, $unstamped->traceParent->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, $invalid->traceParent->flags);
     }
 
     public function testAStampedTraceKeepsItsSampledFlagWhateverTheRatio(): void

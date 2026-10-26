@@ -97,7 +97,7 @@ final class TraceParentTest extends TestCase
         $first = TraceParent::start();
         $second = TraceParent::start();
 
-        self::assertMatchesRegularExpression('/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/', $first->toHeader());
+        self::assertMatchesRegularExpression('/^00-[0-9a-f]{32}-[0-9a-f]{16}-03$/', $first->toHeader());
         self::assertNotSame($first->traceId, $second->traceId);
         self::assertNotSame($first->spanId, $second->spanId);
         self::assertEquals($first, TraceParent::fromHeader($first->toHeader()));
@@ -133,19 +133,25 @@ final class TraceParentTest extends TestCase
         self::assertSame('tracestate', TraceState::HEADER);
     }
 
-    public function testANewTraceIsSampledByDefault(): void
+    public function testANewTraceIsSampledByDefaultWithARandomTraceId(): void
     {
-        self::assertSame(TraceParent::FLAG_SAMPLED, TraceParent::start()->flags);
+        self::assertSame(TraceParent::FLAG_SAMPLED | TraceParent::FLAG_RANDOM, TraceParent::start()->flags);
     }
 
     public function testANewTraceFollowsTheRatio(): void
     {
-        self::assertSame(0, TraceParent::start(new SampleRatio(0.0))->flags);
-        self::assertSame(TraceParent::FLAG_SAMPLED, TraceParent::start(new SampleRatio(1.0))->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, TraceParent::start(new SampleRatio(0.0))->flags);
+        self::assertSame(TraceParent::FLAG_SAMPLED | TraceParent::FLAG_RANDOM, TraceParent::start(new SampleRatio(1.0))->flags);
     }
 
     public function testAChildKeepsAnUnsampledFlag(): void
     {
-        self::assertSame(0, TraceParent::start(new SampleRatio(0.0))->child()->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, TraceParent::start(new SampleRatio(0.0))->child()->flags);
+    }
+
+    public function testTellsWhetherItIsSampled(): void
+    {
+        self::assertTrue(TraceParent::start()->isSampled());
+        self::assertFalse(TraceParent::start(new SampleRatio(0.0))->isSampled());
     }
 }

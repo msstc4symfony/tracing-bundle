@@ -156,3 +156,9 @@ trace id ≥ `2^56 - round(ratio * 2^56)` (W3C L2 / OTEP 235). Parent-based: `co
 `traceparent`. `null` ratio во всех точках = «всегда sampled» без создания объекта (иначе strict coverage
 metadata делает risky каждый тест, стартующий трассу). Сам бандл спаны не пишет: флаг читают экспортёры
 (`tracing-bridge-otlp`) и downstream.
+
+2.3.0: `TraceParent::start()` всегда ставит `FLAG_RANDOM` (флаги новой трассы `03`/`02`). `TraceContext::start($ratio)`
+кладёт `TraceState::sampledAt($ratio->threshold())` = `ot=th:<14 hex без хвостовых нулей>` только если ratio < 1 и
+трасса sampled. Ratio 1 (в т. ч. дефолт — явную 1 от дефолта не отличить, сервис `SampleRatio` есть всегда) →
+`tracestate` нет, провод как в 2.2. `threshold()` = null для ratio 0 (2^56 не влезает в 14 цифр; такая трасса и
+не sampled). Наша трасса не имеет входящего tracestate, поэтому `ot` ни с чем не сливается.

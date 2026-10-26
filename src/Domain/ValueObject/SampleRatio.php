@@ -36,6 +36,22 @@ final readonly class SampleRatio
         $this->threshold = self::RANDOM_VALUES - ($scaled - $whole >= 0.5 ? $whole + 1 : $whole);
     }
 
+    /**
+     * The OTEP 235 `th` value: the threshold in 14 hex digits without trailing zeros, "0" for zero.
+     *
+     * @return non-empty-string|null null for ratio 0, whose threshold (2^56) has no such form
+     */
+    public function threshold(): ?string
+    {
+        if ($this->threshold === self::RANDOM_VALUES) {
+            return null;
+        }
+
+        $digits = rtrim(sprintf('%0' . self::RANDOM_HEX_DIGITS . 'x', $this->threshold), '0');
+
+        return $digits === '' ? '0' : $digits;
+    }
+
     public static function always(): self
     {
         return new self(1.0);

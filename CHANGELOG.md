@@ -4,6 +4,16 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.3.0] - 2026-10-26
+
+### Added
+
+- New traces carry the W3C Level 2 random flag: `traceparent` flags `03` (sampled) or `02` (dropped by
+  `sampling.ratio`) instead of `01` / `00`. Continued traces keep the received flags.
+- A new trace sampled at a `sampling.ratio` below 1 sends `tracestate: ot=th:<threshold>` (OpenTelemetry consistent
+  probability sampling, OTEP 235), so downstream OpenTelemetry samplers know the probability it was sampled at.
+- `TraceParent::isSampled()`, `SampleRatio::threshold()`, `TraceState::sampledAt()`.
+
 ## [2.2.0] - 2026-10-25
 
 ### Added

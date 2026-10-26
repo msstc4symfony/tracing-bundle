@@ -99,7 +99,7 @@ final class W3cTraceContextTest extends KernelTestCase
 
         $outgoing = TraceParent::fromHeader($this->sentHeaders()['traceparent'] ?? '');
         self::assertNotNull($outgoing);
-        self::assertSame(0, $outgoing->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, $outgoing->flags);
     }
 
     public function testARatioOfZeroKeepsTheCallersSampledFlag(): void
@@ -121,7 +121,7 @@ final class W3cTraceContextTest extends KernelTestCase
 
         $this->bus()->dispatch(new Envelope(new TracedMessage(), [new ReceivedStamp('async')]));
 
-        self::assertSame(0, $this->holder()->current()->traceParent->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, $this->holder()->current()->traceParent->flags);
     }
 
     public function testNextRequestDoesNotInheritTheTrace(): void

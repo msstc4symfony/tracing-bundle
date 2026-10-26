@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Domain\ValueObject;
 
 /**
- * W3C Trace Context `tracestate` value. This bundle owns no entry in it, so members are
- * forwarded unchanged: https://www.w3.org/TR/trace-context/#tracestate-header.
+ * W3C Trace Context `tracestate` value: https://www.w3.org/TR/trace-context/#tracestate-header.
+ * A received one is forwarded unchanged; a trace this bundle starts may carry the OpenTelemetry `ot` member.
  */
 final readonly class TraceState
 {
@@ -28,6 +28,16 @@ final readonly class TraceState
     private function __construct(
         public string $value,
     ) {
+    }
+
+    /**
+     * OpenTelemetry's member for a trace sampled at this threshold (OTEP 235): `ot=th:<threshold>`.
+     *
+     * @param non-empty-string $threshold as SampleRatio::threshold() gives it
+     */
+    public static function sampledAt(string $threshold): self
+    {
+        return new self('ot=th:' . $threshold);
     }
 
     /**

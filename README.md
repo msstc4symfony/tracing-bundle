@@ -110,8 +110,9 @@ trace id the service started. A `traceresponse` the application set is kept.
 Outgoing (Symfony HttpClient, Guzzle, Messenger): `traceparent` with this unit's own span —
 the same trace id, flags and span id the unit logs — plus the received `tracestate`. Two calls
 from one unit therefore carry the same parent id. Without an incoming trace the unit starts
-one: random 16-byte trace id, 8-byte span id, flags `01` (or `00` when [sampling](#sampling) says so). A `traceparent` set by the caller is
-kept with no `tracestate` added; a `tracestate` set by the caller is kept too.
+one: random 16-byte trace id, 8-byte span id, flags `03` (sampled and random; `02` when [sampling](#sampling) drops
+the trace), and a `tracestate` only for a trace sampled at a ratio below 1. A `traceparent` set by the caller is kept
+with no `tracestate` added; a `tracestate` set by the caller is kept too.
 
 Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
 (the `traceparent` received over HTTP or in a `TraceStamp`), `null` when the unit started the
@@ -139,8 +140,10 @@ msstc4symfony_tracing:
   differently.
 * A literal value outside `0..1` fails configuration processing; a value from an env var, and `.nan`
   (Symfony's config component skips its checks for a tree holding NAN), fail when the first trace starts.
-* New traces carry only the sampled bit (`01` or `00`): the random flag (`02`) and the `ot=th:`
-  threshold in `tracestate` are not sent.
+* New traces carry the random flag (`02`, W3C Level 2): their trace id is random, so a later service may sample
+  from it. A new trace sampled at a ratio below 1 also carries the OpenTelemetry threshold it was sampled at,
+  `tracestate: ot=th:<threshold>` (OTEP 235: 14 hex digits without trailing zeros, `ot=th:8` for 0.5). A ratio of 1
+  sends no `tracestate`, as before 2.3. A continued trace forwards the received `tracestate` unchanged.
 * Needs 64-bit PHP (the 56-bit threshold is an int).
 
 ## W3C Baggage

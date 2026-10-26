@@ -57,6 +57,26 @@ final class SampleRatioTest extends TestCase
         self::assertFalse($tiny->samples('000000000000000000fffffffffffff7'));
     }
 
+    /**
+     * OTEP 235 `th`: the threshold in 14 hex digits without trailing zeros, "0" for zero.
+     */
+    #[TestWith([1.0, '0'])]
+    #[TestWith([0.5, '8'])]
+    #[TestWith([0.25, 'c'])]
+    #[TestWith([0.1, 'e6666666666666'])]
+    #[TestWith([1 - 2 ** -8, '01'])]
+    #[TestWith([2 ** -56, 'ffffffffffffff'])]
+    public function testTheThresholdInTraceStateForm(float $ratio, string $threshold): void
+    {
+        self::assertSame($threshold, (new SampleRatio($ratio))->threshold());
+    }
+
+    public function testZeroHasNoThreshold(): void
+    {
+        // 2^56 does not fit in 14 digits; such a ratio samples nothing, so no sampled trace carries it.
+        self::assertNull((new SampleRatio(0.0))->threshold());
+    }
+
     public function testTheShareOfSampledRandomTracesFollowsTheRatio(): void
     {
         $ratio = new SampleRatio(0.25);

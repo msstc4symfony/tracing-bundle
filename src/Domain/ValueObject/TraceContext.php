@@ -27,9 +27,16 @@ final readonly class TraceContext
     ) {
     }
 
+    /**
+     * A sampled trace tells the services after it the threshold it was sampled at, so they can sample the same trace
+     * consistently; a ratio of 1 drops nothing and leaves tracestate out.
+     */
     public static function start(?SampleRatio $ratio = null): self
     {
-        return new self(RuntimeId::generate(), TraceParent::start($ratio), null, null, Baggage::empty(), null);
+        $traceParent = TraceParent::start($ratio);
+        $threshold = $ratio instanceof SampleRatio && $ratio->ratio < 1.0 && $traceParent->isSampled() ? $ratio->threshold() : null;
+
+        return new self(RuntimeId::generate(), $traceParent, null, $threshold === null ? null : TraceState::sampledAt($threshold), Baggage::empty(), null);
     }
 
     /**

@@ -121,7 +121,26 @@ final class TraceContextTest extends TestCase
 
     public function testStartPassesTheRatioToTheNewTrace(): void
     {
-        self::assertSame(0, TraceContext::start(new SampleRatio(0.0))->traceParent->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, TraceContext::start(new SampleRatio(0.0))->traceParent->flags);
+    }
+
+    public function testATraceSampledByARatioCarriesItsThresholdInTraceState(): void
+    {
+        $sampled = $this->startSampled(new SampleRatio(0.5));
+
+        self::assertSame('ot=th:8', $sampled->traceState?->value);
+    }
+
+    public function testATraceTheRatioDropsCarriesNoThreshold(): void
+    {
+        self::assertNull(TraceContext::start(new SampleRatio(0.0))->traceState);
+    }
+
+    public function testEveryTraceSampledCarriesNoThreshold(): void
+    {
+        // As without sampling configured: the wire stays as before 2.3.
+        self::assertNull(TraceContext::start(new SampleRatio(1.0))->traceState);
+        self::assertNull(TraceContext::start()->traceState);
     }
 
     public function testAContinuedTraceKeepsTheReceivedFlagWhateverTheRatio(): void
@@ -132,5 +151,18 @@ final class TraceContextTest extends TestCase
         $context = TraceContext::start(new SampleRatio(0.0))->continuing($received, null, Baggage::empty());
 
         self::assertSame(TraceParent::FLAG_SAMPLED, $context->traceParent->flags);
+    }
+
+    private function startSampled(SampleRatio $ratio): TraceContext
+    {
+        // Half the trace ids are sampled: 64 tries all failing has a chance of 2^-64.
+        for ($try = 0; $try < 64; $try++) {
+            $context = TraceContext::start($ratio);
+            if ($context->traceParent->isSampled()) {
+                return $context;
+            }
+        }
+
+        self::fail('No sampled trace in 64 tries.');
     }
 }

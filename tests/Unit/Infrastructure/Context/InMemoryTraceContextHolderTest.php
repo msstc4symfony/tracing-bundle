@@ -55,6 +55,6 @@ final class InMemoryTraceContextHolderTest extends TestCase
         $holder = new InMemoryTraceContextHolder(new SampleRatio(0.0));
         $holder->reset();
 
-        self::assertSame(0, $holder->current()->traceParent->flags);
+        self::assertSame(TraceParent::FLAG_RANDOM, $holder->current()->traceParent->flags);
     }
 }
