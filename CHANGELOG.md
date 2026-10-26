@@ -4,6 +4,13 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.3.1] - 2026-10-26
+
+### Fixed
+
+- An explicit `~` for `application_name`, `component_name`, `baggage.allowed_hosts` or `sampling.ratio` failed the
+  container build; it now means not set, so the default applies (in a later file it keeps the earlier value).
+
 ## [2.3.0] - 2026-10-26
 
 ### Changed
@@ -207,6 +214,8 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.3.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.3.1
+[2.3.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.3.0
 [2.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.2.0
 [2.1.3]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.3
 [2.1.2]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.1.2

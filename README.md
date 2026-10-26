@@ -127,7 +127,7 @@ The bundle records no spans itself; the sampled flag tells span exporters (such 
 ```yaml
 msstc4symfony_tracing:
   sampling:
-    ratio: 0.1 # 0..1, default 1.0: every new trace is sampled
+    ratio: 0.1 # 0..1, default (also ~) 1.0: every new trace is sampled
 ```
 
 * Parent-based: a trace continued from an incoming `traceparent` (HTTP or `TraceStamp`) keeps the
@@ -180,11 +180,12 @@ msstc4symfony_tracing:
     allowed_hosts: ['orders', 'payments.internal', '*.svc.cluster.local', '10.0.0.7', '[fd00::7]']
 ```
 
-* not set (the default): every host gets baggage. The key cannot be set to `~`; leave it out instead;
+* not set (the default, also `~`): every host gets baggage;
 * a list: only the hosts it names. An entry is a host name (case-insensitive, any port, a trailing dot
   ignored), an IP address (IPv6 in brackets, any spelling) or `*.example.com`, which matches every subdomain
   of `example.com` but not `example.com` itself. `[]` sends baggage to no host. A list in a later file
-  (`when@prod`) replaces the earlier one. An invalid entry (a port, a URL, a `*` elsewhere, `*.` over
+  (`when@prod`) replaces the earlier one; `~` there keeps the earlier list, so to send baggage to every host in
+  one environment only, set the list in the others instead. An invalid entry (a port, a URL, a `*` elsewhere, `*.` over
   numbers, non-ASCII: write IDNs in punycode) fails the container build. Entries may use `%env()%`, the
   list as a whole cannot; such an entry is checked when the HTTP client is first built, and an invalid or
   unset value makes building it fail. A processor of no fixed type needs `string:` in front, as in

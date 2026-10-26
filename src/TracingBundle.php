@@ -37,11 +37,14 @@ final class TracingBundle extends AbstractBundle
                 ->stringNode('application_name')
                     ->info('First half of the caller name this service sends downstream in W3C baggage.')
                     ->defaultValue('%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME)%')
+                    // An explicit ~ (on all four leaves) drops the key: an earlier file's value or the default applies.
+                    ->beforeNormalization()->ifNull()->thenUnset()->end()
                     ->cannotBeEmpty()
                 ->end()
                 ->stringNode('component_name')
                     ->info('Second half of the caller name this service sends downstream in W3C baggage.')
                     ->defaultValue('%env(default:msstc4symfony_tracing.unknown:COMPONENT_NAME)%')
+                    ->beforeNormalization()->ifNull()->thenUnset()->end()
                     ->cannotBeEmpty()
                 ->end()
                 ->arrayNode('baggage')
@@ -52,6 +55,7 @@ final class TracingBundle extends AbstractBundle
                             ->info('Hosts outgoing HTTP requests send W3C baggage to: "orders", "10.0.0.1", "[::1]" or "*.example.com" for its subdomains. Not set: every host; empty: none. traceparent and tracestate go to every host.')
                             ->example(['orders', '*.internal.example.com'])
                             ->defaultNull()
+                            ->beforeNormalization()->ifNull()->thenUnset()->end()
                             // A later file (when@prod) replaces the list rather than adding to it.
                             ->performNoDeepMerging()
                             ->stringPrototype()->end()
@@ -63,6 +67,7 @@ final class TracingBundle extends AbstractBundle
                     ->children()
                         ->floatNode('ratio')
                             ->info('Share of new traces marked sampled (0..1); an incoming traceparent keeps its own flag.')
+                            ->beforeNormalization()->ifNull()->thenUnset()->end()
                             // FloatNode keeps an int as is: "ratio: 0" would reach the container as int.
                             ->beforeNormalization()->always(static fn (mixed $ratio): mixed => is_int($ratio) ? (float) $ratio : $ratio)->end()
                             ->min(0.0)

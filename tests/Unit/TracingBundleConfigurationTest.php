@@ -22,6 +22,54 @@ final class TracingBundleConfigurationTest extends TestCase
         self::assertNull($this->allowedHosts([]));
     }
 
+    public function testAnExplicitNullLeavesTheAllowedHostsUnset(): void
+    {
+        self::assertNull($this->allowedHosts([['baggage' => ['allowed_hosts' => null]]]));
+    }
+
+    public function testAnExplicitNullInALaterFileKeepsTheEarlierAllowedHosts(): void
+    {
+        self::assertSame(['orders'], $this->allowedHosts([
+            ['baggage' => ['allowed_hosts' => ['orders']]],
+            ['baggage' => ['allowed_hosts' => null]],
+        ]));
+    }
+
+    #[TestWith(['application_name', '%env(default:msstc4symfony_tracing.unknown:APPLICATION_NAME)%'])]
+    #[TestWith(['component_name', '%env(default:msstc4symfony_tracing.unknown:COMPONENT_NAME)%'])]
+    public function testAnExplicitNullNameFallsBackToTheEnvDefault(string $key, string $default): void
+    {
+        self::assertSame($default, $this->process([[$key => null]])[$key] ?? null);
+    }
+
+    /**
+     * @param array<string, mixed> $earlier
+     * @param array<string, mixed> $later
+     * @param list<string> $path
+     */
+    #[TestWith([['application_name' => 'shop'], ['application_name' => null], ['application_name'], 'shop'])]
+    #[TestWith([['component_name' => 'api'], ['component_name' => null], ['component_name'], 'api'])]
+    #[TestWith([['sampling' => ['ratio' => 0.5]], ['sampling' => ['ratio' => null]], ['sampling', 'ratio'], 0.5])]
+    public function testAnExplicitNullInALaterFileKeepsTheEarlierValue(array $earlier, array $later, array $path, string|float $expected): void
+    {
+        $value = $this->process([$earlier, $later]);
+        foreach ($path as $key) {
+            self::assertIsArray($value);
+            $value = $value[$key] ?? null;
+        }
+
+        self::assertSame($expected, $value);
+    }
+
+    #[TestWith(['application_name'])]
+    #[TestWith(['component_name'])]
+    public function testAnEmptyNameIsRejected(string $key): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->process([[$key => '']]);
+    }
+
     public function testALaterFileReplacesTheAllowedHosts(): void
     {
         self::assertSame(['orders'], $this->allowedHosts([
@@ -43,6 +91,11 @@ final class TracingBundleConfigurationTest extends TestCase
     public function testEveryTraceIsSampledByDefault(): void
     {
         self::assertSame(['ratio' => 1.0], $this->sampling([[]]));
+    }
+
+    public function testAnExplicitNullRatioSamplesEveryTrace(): void
+    {
+        self::assertSame(['ratio' => 1.0], $this->sampling([['sampling' => ['ratio' => null]]]));
     }
 
     public function testAcceptsARatioBetweenZeroAndOne(): void
