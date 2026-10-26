@@ -102,6 +102,32 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertSame(TraceParent::FLAG_RANDOM, $outgoing->flags);
     }
 
+    public function testANewTraceSampledBelowRatioOneSendsItsThreshold(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel(['environment' => TestKernel::ENV_NEARLY_ALWAYS_SAMPLED]);
+
+        $kernel->handle(Request::create('/call'));
+
+        $sent = $this->sentHeaders();
+        $outgoing = TraceParent::fromHeader($sent['traceparent'] ?? '');
+        self::assertNotNull($outgoing);
+        self::assertSame(TraceParent::FLAG_SAMPLED | TraceParent::FLAG_RANDOM, $outgoing->flags);
+        self::assertSame('ot=th:00000000000008', $sent['tracestate'] ?? null);
+    }
+
+    public function testANewTraceSendsTheRandomFlagAndNoTraceStateByDefault(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+        $kernel = self::bootKernel();
+
+        $kernel->handle(Request::create('/call'));
+
+        $sent = $this->sentHeaders();
+        self::assertSame(TraceParent::FLAG_SAMPLED | TraceParent::FLAG_RANDOM, TraceParent::fromHeader($sent['traceparent'] ?? '')?->flags);
+        self::assertArrayNotHasKey('tracestate', $sent);
+    }
+
     public function testARatioOfZeroKeepsTheCallersSampledFlag(): void
     {
         $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');

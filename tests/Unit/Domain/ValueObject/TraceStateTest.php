@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Test\Unit\Domain\ValueObject;
 
+use InvalidArgumentException;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -120,5 +122,23 @@ final class TraceStateTest extends TestCase
     public function testIgnoresUnusableHeaders(array $headers): void
     {
         self::assertNull(TraceState::fromHeaders($headers));
+    }
+
+    public function testSampledAtCarriesTheOpenTelemetryThreshold(): void
+    {
+        self::assertSame('ot=th:8', TraceState::sampledAt('8')->value);
+    }
+
+    /**
+     * @param non-empty-string $threshold
+     */
+    #[TestWith(['a,b=c'])]
+    #[TestWith(['000000000000000'])]
+    #[TestWith(['E'])]
+    public function testSampledAtRejectsWhatIsNoThreshold(string $threshold): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        TraceState::sampledAt($threshold);
     }
 }

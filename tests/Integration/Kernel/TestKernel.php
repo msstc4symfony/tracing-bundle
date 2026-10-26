@@ -66,6 +66,9 @@ final class TestKernel extends Kernel
 
     public const ENV_UNSAMPLED = 'unsampled';
 
+    // 1 - 2^-53: almost every trace is sampled, and below 1 the threshold is sent.
+    public const ENV_NEARLY_ALWAYS_SAMPLED = 'nearly_always_sampled';
+
     // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
     public static function cacheRoot(): string
     {
@@ -178,6 +181,7 @@ final class TestKernel extends Kernel
             self::ENV_BAGGAGE_TO_ORDERS => ['baggage' => ['allowed_hosts' => ['orders', '*.example.com']]],
             self::ENV_BAGGAGE_TO_INVALID => ['baggage' => ['allowed_hosts' => ['orders:8080']]],
             self::ENV_UNSAMPLED => ['sampling' => ['ratio' => 0.0]],
+            self::ENV_NEARLY_ALWAYS_SAMPLED => ['sampling' => ['ratio' => 1 - 2 ** -53]],
             default => null,
         };
         if ($tracing !== null) {

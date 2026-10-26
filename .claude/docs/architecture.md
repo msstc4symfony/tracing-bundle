@@ -158,7 +158,7 @@ metadata делает risky каждый тест, стартующий трас
 (`tracing-bridge-otlp`) и downstream.
 
 2.3.0: `TraceParent::start()` всегда ставит `FLAG_RANDOM` (флаги новой трассы `03`/`02`). `TraceContext::start($ratio)`
-кладёт `TraceState::sampledAt($ratio->threshold())` = `ot=th:<14 hex без хвостовых нулей>` только если ratio < 1 и
-трасса sampled. Ratio 1 (в т. ч. дефолт — явную 1 от дефолта не отличить, сервис `SampleRatio` есть всегда) →
+кладёт `TraceState::sampledAt($ratio->threshold())` = `ot=th:<14 hex без хвостовых нулей>` только если `$ratio->dropsAny()` (ratio < 1) и
+трасса sampled (`sampledState()`). `sampledAt()` валидирует 1–14 lowercase hex. Ratio 1 (в т. ч. дефолт — явную 1 от дефолта не отличить, сервис `SampleRatio` есть всегда) →
 `tracestate` нет, провод как в 2.2. `threshold()` = null для ratio 0 (2^56 не влезает в 14 цифр; такая трасса и
 не sampled). Наша трасса не имеет входящего tracestate, поэтому `ot` ни с чем не сливается.

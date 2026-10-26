@@ -126,17 +126,24 @@ final class TraceContextTest extends TestCase
 
     public function testATraceSampledByARatioCarriesItsThresholdInTraceState(): void
     {
-        $sampled = $this->startSampled(new SampleRatio(0.5));
+        // 1 - 2^-53: threshold 8, so a trace id is dropped with a chance of 2^-53.
+        $context = TraceContext::start(new SampleRatio(1 - 2 ** -53));
 
-        self::assertSame('ot=th:8', $sampled->traceState?->value);
+        self::assertTrue($context->traceParent->isSampled());
+        self::assertSame('ot=th:00000000000008', $context->traceState?->value);
     }
 
     public function testATraceTheRatioDropsCarriesNoThreshold(): void
     {
+        // 2^-56: a trace id is sampled with a chance of 2^-56, and the threshold has a th form.
+        $context = TraceContext::start(new SampleRatio(2 ** -56));
+
+        self::assertFalse($context->traceParent->isSampled());
+        self::assertNull($context->traceState);
         self::assertNull(TraceContext::start(new SampleRatio(0.0))->traceState);
     }
 
-    public function testEveryTraceSampledCarriesNoThreshold(): void
+    public function testARatioOfOneSendsNoTraceState(): void
     {
         // As without sampling configured: the wire stays as before 2.3.
         self::assertNull(TraceContext::start(new SampleRatio(1.0))->traceState);
@@ -151,18 +158,5 @@ final class TraceContextTest extends TestCase
         $context = TraceContext::start(new SampleRatio(0.0))->continuing($received, null, Baggage::empty());
 
         self::assertSame(TraceParent::FLAG_SAMPLED, $context->traceParent->flags);
-    }
-
-    private function startSampled(SampleRatio $ratio): TraceContext
-    {
-        // Half the trace ids are sampled: 64 tries all failing has a chance of 2^-64.
-        for ($try = 0; $try < 64; $try++) {
-            $context = TraceContext::start($ratio);
-            if ($context->traceParent->isSampled()) {
-                return $context;
-            }
-        }
-
-        self::fail('No sampled trace in 64 tries.');
     }
 }

@@ -71,6 +71,13 @@ final class SampleRatioTest extends TestCase
         self::assertSame($threshold, (new SampleRatio($ratio))->threshold());
     }
 
+    public function testOnlyARatioOfOneDropsNothing(): void
+    {
+        self::assertFalse((new SampleRatio(1.0))->dropsAny());
+        self::assertTrue((new SampleRatio(1 - 2 ** -53))->dropsAny());
+        self::assertTrue((new SampleRatio(0.0))->dropsAny());
+    }
+
     public function testZeroHasNoThreshold(): void
     {
         // 2^56 does not fit in 14 digits; such a ratio samples nothing, so no sampled trace carries it.

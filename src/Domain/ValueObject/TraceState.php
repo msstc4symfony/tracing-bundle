@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\TracingBundle\Domain\ValueObject;
 
+use InvalidArgumentException;
+
 /**
  * W3C Trace Context `tracestate` value: https://www.w3.org/TR/trace-context/#tracestate-header.
  * A received one is forwarded unchanged; a trace this bundle starts may carry the OpenTelemetry `ot` member.
@@ -34,9 +36,15 @@ final readonly class TraceState
      * OpenTelemetry's member for a trace sampled at this threshold (OTEP 235): `ot=th:<threshold>`.
      *
      * @param non-empty-string $threshold as SampleRatio::threshold() gives it
+     *
+     * @throws InvalidArgumentException for anything but 1 to 14 lowercase hex digits
      */
     public static function sampledAt(string $threshold): self
     {
+        if (preg_match('/^[0-9a-f]{1,14}$/D', $threshold) !== 1) {
+            throw new InvalidArgumentException(sprintf('A sampling threshold is 1 to 14 lowercase hex digits, "%s" given.', $threshold));
+        }
+
         return new self('ot=th:' . $threshold);
     }
 

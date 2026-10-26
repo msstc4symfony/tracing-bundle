@@ -37,6 +37,14 @@ final readonly class SampleRatio
     }
 
     /**
+     * Whether some trace ids are not sampled: false only for a ratio of 1.
+     */
+    public function dropsAny(): bool
+    {
+        return $this->threshold > 0;
+    }
+
+    /**
      * The OTEP 235 `th` value: the threshold in 14 hex digits without trailing zeros, "0" for zero.
      *
      * @return non-empty-string|null null for ratio 0, whose threshold (2^56) has no such form
