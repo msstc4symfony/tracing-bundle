@@ -135,6 +135,7 @@ final class TraceStateTest extends TestCase
     #[TestWith(['a,b=c'])]
     #[TestWith(['000000000000000'])]
     #[TestWith(['E'])]
+    #[TestWith(["8\n"])]
     public function testSampledAtRejectsWhatIsNoThreshold(string $threshold): void
     {
         $this->expectException(InvalidArgumentException::class);

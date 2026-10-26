@@ -232,6 +232,18 @@ final class W3cTraceContextTest extends KernelTestCase
         self::assertSame($this->holder()->current()->traceParent->spanId, $stamped->spanId);
     }
 
+    public function testAMessageOfANewTraceSampledBelowRatioOneCarriesItsThreshold(): void
+    {
+        $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');
+        self::bootKernel(['environment' => TestKernel::ENV_NEARLY_ALWAYS_SAMPLED]);
+
+        $this->bus()->dispatch(new TracedMessage());
+
+        $stamp = $this->transport()->getSent()[0]?->last(TraceStamp::class);
+        self::assertInstanceOf(TraceStamp::class, $stamp);
+        self::assertSame('ot=th:00000000000008', $stamp->traceState);
+    }
+
     public function testConsumerContinuesTheStampedTraceAndTheNextMessageStartsAnother(): void
     {
         $this->skipUnless(TestKernel::hasMessenger(), 'symfony/messenger');

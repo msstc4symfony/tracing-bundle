@@ -9,7 +9,8 @@ All notable changes to this bundle are documented here. The format follows
 ### Changed
 
 - New traces carry the W3C Level 2 random flag: `traceparent` flags `03` (sampled) or `02` (dropped by
-  `sampling.ratio`) instead of `01` / `00`. Continued traces keep the received flags.
+  `sampling.ratio`) instead of `01` / `00`. Continued traces keep the received flags. Code comparing
+  `TraceParent::$flags` with `FLAG_SAMPLED` should use `isSampled()` (or `flags & FLAG_SAMPLED`).
 
 ### Added
 

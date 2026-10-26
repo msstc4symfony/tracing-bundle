@@ -144,6 +144,8 @@ msstc4symfony_tracing:
   from it. A new trace sampled at a ratio below 1 also carries the OpenTelemetry threshold it was sampled at,
   `tracestate: ot=th:<threshold>` (OTEP 235: 14 hex digits without trailing zeros, `ot=th:8` for 0.5). A ratio of 1
   sends no `tracestate`, as before 2.3. A continued trace forwards the received `tracestate` unchanged.
+* In PHP, test the decision with `TraceParent::isSampled()`, not `flags === FLAG_SAMPLED`: new traces also carry
+  `FLAG_RANDOM`.
 * Needs 64-bit PHP (the 56-bit threshold is an int).
 
 ## W3C Baggage

@@ -35,7 +35,7 @@ final readonly class TraceState
     /**
      * OpenTelemetry's member for a trace sampled at this threshold (OTEP 235): `ot=th:<threshold>`.
      *
-     * @param non-empty-string $threshold as SampleRatio::threshold() gives it
+     * @param non-empty-string $threshold as SampleRatio::threshold() gives it; OTEP 235 also reads trailing zeros
      *
      * @throws InvalidArgumentException for anything but 1 to 14 lowercase hex digits
      */
