@@ -121,7 +121,7 @@ child of that client span; the reservation is dropped when that request has a `t
 trace changed since it was made, and on `kernel.reset`. Reserve right before the request goes out: a reservation no
 request took (a client without these integrations, a Guzzle middleware between the two that answers or throws) is
 sent by the next request of the same trace, unless `reset()` drops it. tracing-bridge-profiling 1.3 reserves for the HTTP spans of
-profiling-bundle 2.3. A Symfony HttpClient request keeps the reserved span on every redirect; a Guzzle redirect is a new
+profiling-bundle 2.3.1. A Symfony HttpClient request keeps the reserved span on every redirect; a Guzzle redirect is a new
 pass through the handler stack and sends the unit's span.
 
 Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
