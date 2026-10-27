@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\TracingBundle\Infrastructure\HttpClient;
 
 use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
@@ -30,6 +31,7 @@ final class TraceHttpClientDecorator implements HttpClientInterface, ResetInterf
         HttpClientInterface $inner,
         private readonly TraceContextHolderInterface $holder,
         private readonly CallerName $caller,
+        private readonly ?OutgoingSpanReservationInterface $reservation = null,
     ) {
         $this->client = $inner;
         $this->headers = new TraceHeaders();
@@ -41,9 +43,10 @@ final class TraceHttpClientDecorator implements HttpClientInterface, ResetInterf
     #[Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
+        $reserved = $this->reservation?->take();
         $headers = $this->headers->of($options);
         if ($headers !== null) {
-            $options['headers'] = $this->headers->with($headers, $this->holder->current()->outgoing($this->caller->value), true);
+            $options['headers'] = $this->headers->with($headers, ($reserved ?? $this->holder->current())->outgoing($this->caller->value), true);
         }
 
         return $this->client->request($method, $url, $options);

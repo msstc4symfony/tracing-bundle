@@ -114,10 +114,21 @@ one: random 16-byte trace id, 8-byte span id, flags `03` (sampled and random; `0
 the trace), and a `tracestate` only for a trace sampled at a ratio below 1. A `traceparent` set by the caller is kept
 with no `tracestate` added; a `tracestate` set by the caller is kept too.
 
+Client spans (2.4): when something opened a span for an outgoing HTTP request before it goes out, it can reserve that
+span through `Application\Port\OutgoingSpanReservationInterface::reserve()` — a child span of the current trace. The
+next HttpClient or Guzzle request takes the reservation and sends it instead of the unit's span, so the receiver is a
+child of that client span; the reservation is dropped when that request has a `traceparent` of its own, when the
+trace changed since it was made, and on `kernel.reset`. Reserve right before the request goes out: a reservation no
+request took (a client without these integrations, a Guzzle middleware between the two that answers or throws) is
+sent by the next request of the same trace, unless `reset()` drops it. tracing-bridge-profiling 1.3 reserves for the HTTP spans of
+profiling-bundle 2.3. A Symfony HttpClient request keeps the reserved span on every redirect; a Guzzle redirect is a new
+pass through the handler stack and sends the unit's span.
+
 Logs: `span_id` is the unit's own span, `parent_span_id` the span id of the unit that started it
 (the `traceparent` received over HTTP or in a `TraceStamp`), `null` when the unit started the
 trace. As outgoing calls send the unit's own span, a receiver's `parent_span_id` is a `span_id` in
-the sender's logs, so the logs of every service rebuild the call tree.
+the sender's logs, so the logs of every service rebuild the call tree. With a reserved client span (below) it is the
+`trace_span_id` of the sender's profiling record for that request instead.
 
 ### Sampling
 
@@ -297,7 +308,7 @@ Everything else is `@internal`.
 | Kind | Name |
 |---|---|
 | Trace context (immutable) | `Domain\ValueObject\TraceContext`, `TraceParent`, `TraceState`, `Baggage`, `OutgoingTrace`, `SampleRatio` |
-| Port | `Application\Port\TraceContextHolderInterface` (`current()`, `replace()`, `reset()`) |
+| Port | `Application\Port\TraceContextHolderInterface` (`current()`, `replace()`, `reset()`); `Application\Port\OutgoingSpanReservationInterface` (`reserve()`, `take()`, `reset()`) |
 | Caller name, baggage hosts | `Application\CallerName`, `Application\BaggageRecipients` |
 | Messenger | `Framework\Messenger\IncomingTraceMiddleware`, `OutgoingTraceMiddleware`, `TraceStamp` |
 | Sentry | `Framework\Sentry\TracingIntegration` |

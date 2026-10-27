@@ -11,6 +11,7 @@ use GuzzleHttp\Promise\PromiseInterface;
 use LogicException;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
@@ -38,6 +39,7 @@ final readonly class TraceGuzzleMiddleware
         private TraceContextHolderInterface $holder,
         private CallerName $caller,
         private BaggageRecipients $recipients = new BaggageRecipients(),
+        private ?OutgoingSpanReservationInterface $reservation = null,
     ) {
     }
 
@@ -105,7 +107,7 @@ final readonly class TraceGuzzleMiddleware
 
     private function withTraceHeaders(RequestInterface $request): RequestInterface
     {
-        $trace = $this->holder->current()->outgoing($this->caller->value);
+        $trace = ($this->reservation?->take() ?? $this->holder->current())->outgoing($this->caller->value);
 
         if (!$request->hasHeader(TraceParent::HEADER)) {
             $request = $request->withHeader(TraceParent::HEADER, $trace->traceParent->toHeader());

@@ -9,6 +9,7 @@ use GuzzleHttp\HandlerStack;
 use IteratorAggregate;
 use Monolog\Handler\TestHandler;
 use Monolog\LogRecord;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\Baggage;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
@@ -89,6 +90,59 @@ final class ContainerCompileTest extends KernelTestCase
         self::assertInstanceOf(RecordingResponseFactory::class, $factory);
         self::assertContains('traceparent: ' . $known->traceParent->toHeader(), $factory->lastHeaders);
         self::assertContains('baggage: msstc4symfony.caller=unknown%3Aunknown', $factory->lastHeaders);
+    }
+
+    public function testOutgoingHttpRequestCarriesTheReservedSpan(): void
+    {
+        $this->skipUnless(TestKernel::hasHttpClient(), 'symfony/http-client');
+
+        self::bootKernel();
+        $container = self::getContainer();
+        $reservation = $container->get(OutgoingSpanReservationInterface::class);
+        self::assertInstanceOf(OutgoingSpanReservationInterface::class, $reservation);
+        $reserved = $reservation->reserve();
+
+        $client = $container->get('test.http_client');
+        self::assertInstanceOf(HttpClientInterface::class, $client);
+        $client->request('GET', 'https://example.com')->getStatusCode();
+
+        $factory = $container->get(RecordingResponseFactory::class);
+        self::assertInstanceOf(RecordingResponseFactory::class, $factory);
+        self::assertContains('traceparent: ' . $reserved->traceParent->toHeader(), $factory->lastHeaders);
+    }
+
+    public function testGuzzleClientsSendTheReservedSpan(): void
+    {
+        $this->skipUnless(TestKernel::hasGuzzle(), 'guzzlehttp/guzzle');
+
+        self::bootKernel();
+        $reservation = self::getContainer()->get(OutgoingSpanReservationInterface::class);
+        self::assertInstanceOf(OutgoingSpanReservationInterface::class, $reservation);
+        $reserved = $reservation->reserve();
+        $client = self::getContainer()->get(TestKernel::GUZZLE_CLIENT);
+        self::assertInstanceOf(Client::class, $client);
+        $stack = $client->getConfig('handler');
+        self::assertInstanceOf(HandlerStack::class, $stack);
+        $transport = new RecordingGuzzleTransport();
+        $stack->setHandler($transport);
+
+        $client->request('GET', 'https://example.com');
+
+        self::assertSame([$reserved->traceParent->toHeader()], $transport->lastRequest?->getHeader('traceparent'));
+    }
+
+    public function testKernelResetDropsTheReservation(): void
+    {
+        self::bootKernel();
+        $reservation = self::getContainer()->get(OutgoingSpanReservationInterface::class);
+        self::assertInstanceOf(OutgoingSpanReservationInterface::class, $reservation);
+        $reservation->reserve();
+        $resetter = self::getContainer()->get('services_resetter');
+        self::assertInstanceOf(ResetInterface::class, $resetter);
+
+        $resetter->reset();
+
+        self::assertNull($reservation->take());
     }
 
     public function testLogRecordsCarryTheTrace(): void

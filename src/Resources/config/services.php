@@ -5,6 +5,7 @@ declare(strict_types=1);
 use GuzzleHttp\ClientInterface;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\SampleRatio;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\IncomingTraceMiddleware;
@@ -12,6 +13,7 @@ use Msstc4Symfony\TracingBundle\Framework\Messenger\OutgoingTraceMiddleware;
 use Msstc4Symfony\TracingBundle\Framework\Messenger\WorkerTraceSubscriber;
 use Msstc4Symfony\TracingBundle\Framework\Monolog\TraceLogProcessor;
 use Msstc4Symfony\TracingBundle\Framework\Sentry\TracingIntegration;
+use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryOutgoingSpanReservation;
 use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
 use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\TraceGuzzleMiddleware;
 use Msstc4Symfony\TracingBundle\Presentation\EventListener\ConsoleTraceSubscriber;
@@ -39,6 +41,10 @@ return static function (ContainerConfigurator $container): void {
         ->tag('kernel.reset', ['method' => 'reset'])
     ;
     $services->alias(TraceContextHolderInterface::class, InMemoryTraceContextHolder::class)->public();
+    $services->set(InMemoryOutgoingSpanReservation::class)
+        ->tag('kernel.reset', ['method' => 'reset'])
+    ;
+    $services->alias(OutgoingSpanReservationInterface::class, InMemoryOutgoingSpanReservation::class)->public();
     $services->set(BaggageRecipients::class)
         ->arg('$allowedHosts', param('msstc4symfony_tracing.baggage.allowed_hosts'))
     ;

@@ -15,6 +15,7 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\RuntimeId;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
+use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryOutgoingSpanReservation;
 use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\AllowListTraceHttpClientDecorator;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\ClientOptions;
@@ -45,6 +46,7 @@ use TypeError;
 #[UsesClass(RequestUrl::class)]
 #[UsesClass(TraceHeaders::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
+#[UsesClass(InMemoryOutgoingSpanReservation::class)]
 #[UsesClass(CallerName::class)]
 #[UsesClass(BaggageRecipients::class)]
 #[UsesClass(TraceContext::class)]
@@ -65,6 +67,8 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
 
     private InMemoryTraceContextHolder $holder;
 
+    private InMemoryOutgoingSpanReservation $reservation;
+
     #[Override]
     protected function setUp(): void
     {
@@ -73,6 +77,7 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
         }
 
         $this->holder = new InMemoryTraceContextHolder();
+        $this->reservation = new InMemoryOutgoingSpanReservation($this->holder);
         $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
 
         $this->inner = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
@@ -102,6 +107,30 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
 
             return array_shift($this->responses) ?? new MockResponse('done');
         });
+    }
+
+    public function testSendsTheReservedSpanOnEveryHopOfARequest(): void
+    {
+        $reserved = $this->reservation->reserve();
+        $this->responses = [new MockResponse('', ['http_code' => 302, 'response_headers' => ['Location: https://payments/y']])];
+
+        $this->decorator(['orders', 'payments'])->request('GET', 'https://orders/x')->getStatusCode();
+        $this->decorator(['orders', 'payments'])->request('GET', 'https://orders/z')->getStatusCode();
+
+        self::assertCount(3, $this->sent);
+        self::assertSame([$reserved->traceParent->toHeader()], $this->sent[0]['headers']['traceparent'] ?? null);
+        self::assertSame([$reserved->traceParent->toHeader()], $this->sent[1]['headers']['traceparent'] ?? null);
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sent[2]['headers']['traceparent'] ?? null);
+    }
+
+    public function testATraceParentTheCallerSetDropsTheReservation(): void
+    {
+        $this->reservation->reserve();
+
+        $this->decorator(['orders'])->request('GET', 'https://orders/x', ['headers' => ['traceparent' => 'mine']])->getStatusCode();
+
+        self::assertSame(['mine'], $this->sent[0]['headers']['traceparent'] ?? null);
+        self::assertNull($this->reservation->take());
     }
 
     public function testSendsTheBaggageToAnAllowedHostOnAnyPort(): void
@@ -813,7 +842,7 @@ final class AllowListTraceHttpClientDecoratorTest extends TestCase
      */
     private function decorator(array $allowedHosts, int $maxRedirects = 20, bool $ntlmDefault = false): AllowListTraceHttpClientDecorator
     {
-        return new AllowListTraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'), new BaggageRecipients($allowedHosts), $maxRedirects, $ntlmDefault);
+        return new AllowListTraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'), new BaggageRecipients($allowedHosts), $maxRedirects, $ntlmDefault, $this->reservation);
     }
 
     private function redirect(int $status, ?string $location): MockResponse

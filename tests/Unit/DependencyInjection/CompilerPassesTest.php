@@ -9,6 +9,7 @@ use GuzzleHttp\ClientInterface;
 use GuzzleHttp\HandlerStack;
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\BaggageRecipientsPass;
 use Msstc4Symfony\TracingBundle\DependencyInjection\CompilerPass\GuzzlePass;
@@ -55,6 +56,7 @@ final class CompilerPassesTest extends TestCase
                 '$inner' => new Reference('msstc4symfony_tracing.http_client.transport.inner'),
                 '$holder' => new Reference(TraceContextHolderInterface::class),
                 '$caller' => new Reference(CallerName::class),
+                '$reservation' => new Reference(OutgoingSpanReservationInterface::class),
             ],
             $decorator->getArguments(),
         );
@@ -99,6 +101,7 @@ final class CompilerPassesTest extends TestCase
                 '$recipients' => new Reference(BaggageRecipients::class),
                 '$maxRedirects' => $maxRedirects,
                 '$ntlmDefault' => $ntlmDefault,
+                '$reservation' => new Reference(OutgoingSpanReservationInterface::class),
             ],
             $decorator->getArguments(),
         );

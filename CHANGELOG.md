@@ -4,6 +4,16 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.4.0] - 2026-10-27
+
+### Added
+
+- `Application\Port\OutgoingSpanReservationInterface` (service alias, public): `reserve()` keeps a child span of the
+  current trace for the next outgoing request, `take()` hands it out once. The HttpClient decorators and
+  `TraceGuzzleMiddleware` send a reserved span instead of the unit's span, so a client span opened before the request
+  (tracing-bridge-profiling 1.3) becomes the receiver's parent. Without a reservation nothing changes.
+- `TraceGuzzleMiddleware` takes the reservation as an optional fourth constructor argument.
+
 ## [2.3.1] - 2026-10-26
 
 ### Fixed
@@ -214,6 +224,7 @@ First release of `msstc4symfony/tracing-bundle` (namespace `Msstc4Symfony\Tracin
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `symfony/service-contracts` ^3.
 - Optional: Guzzle 7 / 8, Symfony HttpClient, Messenger, MonologBundle, `sentry/sentry` 4.x.
 
+[2.4.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.4.0
 [2.3.1]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.3.1
 [2.3.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.3.0
 [2.2.0]: https://github.com/msstc4symfony/tracing-bundle/releases/tag/v2.2.0

@@ -18,6 +18,7 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\RuntimeId;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
+use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryOutgoingSpanReservation;
 use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
 use Msstc4Symfony\TracingBundle\Infrastructure\Guzzle\TraceGuzzleMiddleware;
 use Msstc4Symfony\TracingBundle\Test\Unit\Infrastructure\Guzzle\Fixture\ClientWithoutConfig;
@@ -33,6 +34,7 @@ use ReflectionProperty;
  */
 #[CoversClass(TraceGuzzleMiddleware::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
+#[UsesClass(InMemoryOutgoingSpanReservation::class)]
 #[UsesClass(CallerName::class)]
 #[UsesClass(BaggageRecipients::class)]
 #[UsesClass(TraceContext::class)]
@@ -51,6 +53,8 @@ final class TraceGuzzleMiddlewareTest extends TestCase
 
     private InMemoryTraceContextHolder $holder;
 
+    private InMemoryOutgoingSpanReservation $reservation;
+
     #[Override]
     protected function setUp(): void
     {
@@ -59,6 +63,7 @@ final class TraceGuzzleMiddlewareTest extends TestCase
         }
 
         $this->holder = new InMemoryTraceContextHolder();
+        $this->reservation = new InMemoryOutgoingSpanReservation($this->holder);
         $this->transport = new MockHandler([new Response(), new Response()]);
         $this->client = new Client(['handler' => HandlerStack::create($this->transport)]);
     }
@@ -79,6 +84,53 @@ final class TraceGuzzleMiddlewareTest extends TestCase
         self::assertSame([$this->holder->current()->traceParent->toHeader()], $request->getHeader('traceparent'));
         self::assertSame(['msstc4symfony.caller=orders%3Aapi,user=alice'], $request->getHeader('baggage'));
         self::assertFalse($request->hasHeader('tracestate'));
+    }
+
+    public function testSendsTheReservedSpanOnceThenTheCurrentOne(): void
+    {
+        $reserved = $this->reservation->reserve();
+        $this->middleware()->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com');
+        self::assertSame([$reserved->traceParent->toHeader()], $this->lastRequest()->getHeader('traceparent'));
+
+        $this->client->request('GET', 'https://example.com');
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->lastRequest()->getHeader('traceparent'));
+    }
+
+    public function testATraceParentTheCallerSetDropsTheReservation(): void
+    {
+        $this->reservation->reserve();
+        $this->middleware()->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com', ['headers' => ['traceparent' => 'mine']]);
+
+        self::assertSame(['mine'], $this->lastRequest()->getHeader('traceparent'));
+        self::assertNull($this->reservation->take());
+    }
+
+    public function testARedirectAfterTheReservedSpanSendsTheUnitsSpan(): void
+    {
+        $this->transport->reset();
+        $this->transport->append(new Response(302, ['Location' => 'http://payments/y']), new Response());
+
+        $reserved = $this->reservation->reserve();
+        $this->middleware()->addHandler($this->client);
+
+        $this->client->request('GET', 'http://orders/x');
+
+        self::assertSame('payments', $this->lastRequest()->getUri()->getHost());
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->lastRequest()->getHeader('traceparent'));
+        self::assertNotSame($reserved->traceParent->toHeader(), $this->holder->current()->traceParent->toHeader());
+    }
+
+    public function testWorksWithoutAReservation(): void
+    {
+        (new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api')))->addHandler($this->client);
+
+        $this->client->request('GET', 'https://example.com');
+
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->lastRequest()->getHeader('traceparent'));
     }
 
     public function testAddsTheCallerToABaggageTheCallerSet(): void
@@ -294,7 +346,7 @@ final class TraceGuzzleMiddlewareTest extends TestCase
 
     private function middleware(BaggageRecipients $recipients = new BaggageRecipients()): TraceGuzzleMiddleware
     {
-        return new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api'), $recipients);
+        return new TraceGuzzleMiddleware($this->holder, new CallerName('orders', 'api'), $recipients, $this->reservation);
     }
 
     private function lastRequest(): RequestInterface

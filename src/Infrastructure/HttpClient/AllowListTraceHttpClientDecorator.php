@@ -6,6 +6,7 @@ namespace Msstc4Symfony\TracingBundle\Infrastructure\HttpClient;
 
 use Msstc4Symfony\TracingBundle\Application\BaggageRecipients;
 use Msstc4Symfony\TracingBundle\Application\CallerName;
+use Msstc4Symfony\TracingBundle\Application\Port\OutgoingSpanReservationInterface;
 use Msstc4Symfony\TracingBundle\Application\Port\TraceContextHolderInterface;
 use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
@@ -47,6 +48,7 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
         private readonly BaggageRecipients $recipients,
         private readonly int $maxRedirects,
         private readonly bool $ntlmDefault,
+        private readonly ?OutgoingSpanReservationInterface $reservation = null,
     ) {
         $this->client = $inner;
         $this->headers = new TraceHeaders();
@@ -58,6 +60,7 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
     #[Override]
     public function request(string $method, string $url, array $options = []): AsyncResponse
     {
+        $reserved = $this->reservation?->take();
         $prepared = ClientOptions::prepare($url, $options, $this->defaults);
         $url = $prepared->url;
         $options = $prepared->options;
@@ -68,7 +71,7 @@ final class AllowListTraceHttpClientDecorator implements HttpClientInterface, Re
 
         $baseUri = $options['base_uri'] ?? null;
         $target = RequestUrl::resolve($url, is_string($baseUri) || is_array($baseUri) ? $baseUri : null);
-        $trace = $this->holder->current()->outgoing($this->caller->value);
+        $trace = ($reserved ?? $this->holder->current())->outgoing($this->caller->value);
         $withBaggage = !$this->usesNtlm($options) && $target instanceof RequestUrl && $this->recipients->allows($target->host);
         $maxRedirects = is_numeric($options['max_redirects'] ?? null) ? (int) $options['max_redirects'] : $this->maxRedirects;
 

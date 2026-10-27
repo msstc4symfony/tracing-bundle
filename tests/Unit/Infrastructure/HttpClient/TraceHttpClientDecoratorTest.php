@@ -12,6 +12,7 @@ use Msstc4Symfony\TracingBundle\Domain\ValueObject\RuntimeId;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceContext;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceParent;
 use Msstc4Symfony\TracingBundle\Domain\ValueObject\TraceState;
+use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryOutgoingSpanReservation;
 use Msstc4Symfony\TracingBundle\Infrastructure\Context\InMemoryTraceContextHolder;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHeaders;
 use Msstc4Symfony\TracingBundle\Infrastructure\HttpClient\TraceHttpClientDecorator;
@@ -27,6 +28,7 @@ use Symfony\Component\HttpClient\ScopingHttpClient;
 
 #[CoversClass(TraceHttpClientDecorator::class)]
 #[UsesClass(InMemoryTraceContextHolder::class)]
+#[UsesClass(InMemoryOutgoingSpanReservation::class)]
 #[UsesClass(CallerName::class)]
 #[UsesClass(TraceHeaders::class)]
 #[UsesClass(TraceContext::class)]
@@ -46,6 +48,8 @@ final class TraceHttpClientDecoratorTest extends TestCase
 
     private InMemoryTraceContextHolder $holder;
 
+    private InMemoryOutgoingSpanReservation $reservation;
+
     #[Override]
     protected function setUp(): void
     {
@@ -54,6 +58,7 @@ final class TraceHttpClientDecoratorTest extends TestCase
         }
 
         $this->holder = new InMemoryTraceContextHolder();
+        $this->reservation = new InMemoryOutgoingSpanReservation($this->holder);
         $this->inner = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $this->sentHeaders[] = $this->headersOf($options);
 
@@ -70,6 +75,46 @@ final class TraceHttpClientDecoratorTest extends TestCase
         self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sentHeaders[0]['traceparent'] ?? null);
         self::assertSame(['msstc4symfony.caller=orders%3Aapi,user=alice'], $this->sentHeaders[0]['baggage'] ?? null);
         self::assertArrayNotHasKey('tracestate', $this->sentHeaders[0]);
+    }
+
+    public function testSendsTheReservedSpanOnceThenTheCurrentOne(): void
+    {
+        $this->holder->replace($this->holder->current()->withBaggage(Baggage::fromHeaders(['user=alice'])));
+        $reserved = $this->reservation->reserve();
+
+        $this->send([]);
+        $this->send([]);
+
+        self::assertSame([$reserved->traceParent->toHeader()], $this->sentHeaders[0]['traceparent'] ?? null);
+        self::assertSame(['msstc4symfony.caller=orders%3Aapi,user=alice'], $this->sentHeaders[0]['baggage'] ?? null);
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sentHeaders[1]['traceparent'] ?? null);
+    }
+
+    public function testWorksWithoutAReservation(): void
+    {
+        (new TraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api')))->request('GET', 'https://example.com')->getStatusCode();
+
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sentHeaders[0]['traceparent'] ?? null);
+    }
+
+    public function testSendsTheCurrentSpanWhenTheTraceChangedSinceTheReservation(): void
+    {
+        $this->reservation->reserve();
+        $this->holder->replace($this->holder->current()->withChildSpan());
+
+        $this->send([]);
+
+        self::assertSame([$this->holder->current()->traceParent->toHeader()], $this->sentHeaders[0]['traceparent'] ?? null);
+    }
+
+    public function testATraceParentTheCallerSetDropsTheReservation(): void
+    {
+        $this->reservation->reserve();
+
+        $this->send(['headers' => ['traceparent' => 'mine']]);
+
+        self::assertSame(['mine'], $this->sentHeaders[0]['traceparent'] ?? null);
+        self::assertNull($this->reservation->take());
     }
 
     public function testSendsThisUnitsSpanOfTheReceivedTrace(): void
@@ -236,7 +281,7 @@ final class TraceHttpClientDecoratorTest extends TestCase
 
     private function decorator(): TraceHttpClientDecorator
     {
-        return new TraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'));
+        return new TraceHttpClientDecorator($this->inner, $this->holder, new CallerName('orders', 'api'), $this->reservation);
     }
 
     private function continueReceivedTrace(): void
